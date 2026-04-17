@@ -483,8 +483,82 @@ def translate_titles_ai(titles):
     return out
 
 
+def translate_strings_ai(strings):
+    """EN->DE batch translation de option names/values via Claude Haiku.
+
+    Input: list[str]. Output: dict {en: de}. Ja deduplica internamente.
+    """
+    strings = sorted(set(s for s in strings if s))
+    if not strings:
+        return {}
+
+    try:
+        import anthropic
+        from pydantic import BaseModel
+    except ImportError:
+        sys.exit("faltam dependencias: pip install anthropic pydantic")
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        sys.exit("faltando env var: ANTHROPIC_API_KEY")
+
+    class TranslatedString(BaseModel):
+        index: int
+        de: str
+
+    class StringBatch(BaseModel):
+        items: list[TranslatedString]
+
+    client = anthropic.Anthropic()
+    result = {}
+
+    for start in range(0, len(strings), TRANSLATE_BATCH_SIZE):
+        chunk = strings[start : start + TRANSLATE_BATCH_SIZE]
+        numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(chunk))
+        prompt = (
+            "Translate these Shopify product OPTION NAMES and OPTION VALUES "
+            "from English to German. These are the labels and choices shown "
+            "to shoppers on product pages (e.g. option names like 'Color', "
+            "'Size'; values like 'Red', 'Large', 'S ( 11in L x 4.5in W )').\n\n"
+            "Rules:\n"
+            "- Use natural, common German product terminology "
+            "(Color->Farbe, Size->Größe, Bag Size->Taschengröße, "
+            "Brown->Braun, White->Weiß, Black->Schwarz, etc.).\n"
+            "- Preserve dimensions, measurements, numbers, and units "
+            "(inches/in, oz, cm, ml, L, W, H) verbatim — do not convert.\n"
+            "- Preserve size letters (S, M, L, XL) as-is.\n"
+            "- If the string is already in German or has no reasonable "
+            "translation, return it verbatim.\n"
+            "- Do not add extra punctuation or change structure.\n"
+            "- Output exactly one item per input, preserving index order.\n\n"
+            f"Strings:\n{numbered}"
+        )
+        try:
+            resp = client.messages.parse(
+                model=TRANSLATE_MODEL,
+                max_tokens=16000,
+                messages=[{"role": "user", "content": prompt}],
+                output_format=StringBatch,
+            )
+        except Exception as e:
+            sys.exit(f"Claude API falhou: {e}")
+
+        parsed = resp.parsed_output
+        if not parsed:
+            sys.exit("Claude retornou resposta vazia (options)")
+        for item in parsed.items:
+            idx = item.index - 1
+            if 0 <= idx < len(chunk):
+                result[chunk[idx]] = item.de.strip()
+
+    missing = [s for s in strings if s not in result]
+    if missing:
+        sys.exit(f"traducao de options faltou pra: {missing}")
+    return result
+
+
 def run_translate_unmatched(src_shop, src_token, dst_shop, dst_token, apply):
-    """Traduz titulos dos produtos do dest sem SKU correspondente no source."""
+    """Traduz titulo + option names + option values dos produtos do dest
+    sem SKU correspondente no source."""
     print(f"lendo produtos do source ({src_shop}) pra montar set de SKUs...")
     src_skus = set()
     for p in fetch_products(src_shop, src_token):
@@ -506,16 +580,17 @@ def run_translate_unmatched(src_shop, src_token, dst_shop, dst_token, apply):
         print("nada pra fazer.")
         return
 
+    # ---------- Titulos ----------
     print(f"\ntraduzindo {len(unmatched)} titulos via {TRANSLATE_MODEL}...")
     de_titles = translate_titles_ai([p["title"] for p in unmatched])
 
-    planned = []
-    already_ok = 0
+    title_planned = []
+    titles_already_ok = 0
     for dst_p, de_title in zip(unmatched, de_titles):
         if de_title == dst_p["title"]:
-            already_ok += 1
+            titles_already_ok += 1
             continue
-        planned.append(
+        title_planned.append(
             {
                 "id": dst_p["id"],
                 "sku": dst_p["sku"],
@@ -524,40 +599,125 @@ def run_translate_unmatched(src_shop, src_token, dst_shop, dst_token, apply):
             }
         )
 
-    print("\nresumo:")
-    print(f"  traduzir:  {len(planned)}")
-    print(f"  ja alemao: {already_ok}")
+    # ---------- Options ----------
+    unique_strings = set()
+    for p in unmatched:
+        for opt in p["options"]:
+            unique_strings.add(opt["name"])
+            for v in opt["optionValues"]:
+                unique_strings.add(v["name"])
 
-    preview = planned[:25]
-    if preview:
-        print("\npreview:")
+    de_map = {}
+    if unique_strings:
+        print(
+            f"traduzindo {len(unique_strings)} strings unicas de options "
+            f"via {TRANSLATE_MODEL}..."
+        )
+        de_map = translate_strings_ai(unique_strings)
+
+    option_planned = []
+    options_already_ok = 0
+    for p in unmatched:
+        if not p["options"]:
+            continue
+        has_change = False
+        for opt in p["options"]:
+            if de_map.get(opt["name"], opt["name"]) != opt["name"]:
+                has_change = True
+                break
+            for v in opt["optionValues"]:
+                if de_map.get(v["name"], v["name"]) != v["name"]:
+                    has_change = True
+                    break
+            if has_change:
+                break
+        if not has_change:
+            options_already_ok += 1
+            continue
+        fake_src = [
+            {
+                "position": opt["position"],
+                "name": de_map.get(opt["name"], opt["name"]),
+                "optionValues": [
+                    {"name": de_map.get(v["name"], v["name"])}
+                    for v in opt["optionValues"]
+                ],
+            }
+            for opt in p["options"]
+        ]
+        option_planned.append(
+            {"id": p["id"], "sku": p["sku"], "src_options": fake_src}
+        )
+
+    # ---------- Resumo ----------
+    print("\nresumo:")
+    print(f"  titulo  - traduzir:  {len(title_planned)}")
+    print(f"  titulo  - ja alemao: {titles_already_ok}")
+    print(f"  options - traduzir:  {len(option_planned)}")
+    print(f"  options - ja alemao: {options_already_ok}")
+
+    if title_planned:
+        preview = title_planned[:15]
+        print("\ntitulos (primeiros 15):")
         for u in preview:
             print(f"  [{u['sku']}] {u['title_old']!r}")
             print(f"      -> {u['title_new']!r}")
-        if len(planned) > len(preview):
-            print(f"  ... +{len(planned) - len(preview)} mais")
+        if len(title_planned) > len(preview):
+            print(f"  ... +{len(title_planned) - len(preview)} mais")
+
+    if de_map:
+        print("\ntraducoes de options (primeiras 30 alteradas):")
+        shown = 0
+        for en, de in sorted(de_map.items()):
+            if en == de:
+                continue
+            print(f"  {en!r} -> {de!r}")
+            shown += 1
+            if shown >= 30:
+                break
 
     if not apply:
         print("\ndry-run. rode de novo com --apply pra escrever.")
         return
 
-    print(f"\naplicando {len(planned)} updates no dest...")
-    ok = err = 0
-    for i, u in enumerate(planned, 1):
-        try:
-            ue = apply_product_update(
-                dst_shop, dst_token, {"id": u["id"], "title": u["title_new"]}
+    # ---------- Aplicar titulos ----------
+    if title_planned:
+        print(f"\naplicando {len(title_planned)} titulos...")
+        ok = err = 0
+        for i, u in enumerate(title_planned, 1):
+            try:
+                ue = apply_product_update(
+                    dst_shop, dst_token, {"id": u["id"], "title": u["title_new"]}
+                )
+                if ue:
+                    print(f"  [{i}/{len(title_planned)}] ERRO {u['sku']}: {ue}")
+                    err += 1
+                else:
+                    print(f"  [{i}/{len(title_planned)}] ok  {u['sku']}")
+                    ok += 1
+            except Exception as e:
+                print(f"  [{i}/{len(title_planned)}] ERRO {u['sku']}: {e}")
+                err += 1
+        print(f"  titulos: {ok} ok, {err} erros")
+
+    # ---------- Aplicar options (refetch fresh IDs via sync_options_live) ----------
+    if option_planned:
+        print(f"\naplicando options em {len(option_planned)} produtos...")
+        ok = err = 0
+        for i, u in enumerate(option_planned, 1):
+            errors, applied = sync_options_live(
+                dst_shop, dst_token, u["id"], u["src_options"]
             )
-            if ue:
-                print(f"  [{i}/{len(planned)}] ERRO {u['sku']}: {ue}")
+            if errors:
+                print(f"  [{i}/{len(option_planned)}] ERRO {u['sku']}: {errors}")
                 err += 1
             else:
-                print(f"  [{i}/{len(planned)}] ok  {u['sku']}")
+                print(
+                    f"  [{i}/{len(option_planned)}] ok  {u['sku']} "
+                    f"(options atualizados: {applied})"
+                )
                 ok += 1
-        except Exception as e:
-            print(f"  [{i}/{len(planned)}] ERRO {u['sku']}: {e}")
-            err += 1
-    print(f"\nfim. {ok} atualizados, {err} erros.")
+        print(f"  options: {ok} ok, {err} erros")
 
 
 def main():
