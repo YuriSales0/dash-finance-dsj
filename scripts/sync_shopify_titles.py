@@ -34,8 +34,17 @@ Uso:
     python scripts/sync_shopify_titles.py            # dry-run
     python scripts/sync_shopify_titles.py --apply    # escreve
 
-Dependencias: requests
+    # diagnostico de 1 produto (nao roda sync):
+    python scripts/sync_shopify_titles.py --inspect <SKU>
+
+    # traduz via IA (Claude Haiku) EN->DE os titulos dos produtos do
+    # dest que nao tem match no source. Requer ANTHROPIC_API_KEY.
+    python scripts/sync_shopify_titles.py --translate-unmatched
+    python scripts/sync_shopify_titles.py --translate-unmatched --apply
+
+Dependencias:
     pip install requests
+    pip install anthropic pydantic   # so pra --translate-unmatched
 """
 
 import argparse
@@ -47,6 +56,8 @@ import requests
 
 API_VERSION = "2025-10"
 PAGE_SIZE = 50
+TRANSLATE_MODEL = "claude-haiku-4-5"
+TRANSLATE_BATCH_SIZE = 30
 
 
 def env(name):
@@ -406,6 +417,149 @@ def inspect_product(shop, token, sku, label):
         print(f"    {t['key']!r} = {val!r}{outdated}")
 
 
+def translate_titles_ai(titles):
+    """EN->DE batch translation via Claude Haiku with structured output.
+
+    Retorna lista paralela com o titulo traduzido pra cada entrada.
+    Os produtos tem SKU identico nas duas lojas, entao se um nao tem match
+    e porque nao existe na alemã -- precisa traduzir do zero via IA.
+    """
+    try:
+        import anthropic
+        from pydantic import BaseModel
+    except ImportError:
+        sys.exit(
+            "faltam dependencias: pip install anthropic pydantic"
+        )
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        sys.exit("faltando env var: ANTHROPIC_API_KEY")
+
+    class TranslatedItem(BaseModel):
+        index: int
+        title_de: str
+
+    class TranslationBatch(BaseModel):
+        items: list[TranslatedItem]
+
+    client = anthropic.Anthropic()
+    out = [""] * len(titles)
+
+    for start in range(0, len(titles), TRANSLATE_BATCH_SIZE):
+        chunk = titles[start : start + TRANSLATE_BATCH_SIZE]
+        numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(chunk))
+        prompt = (
+            "Translate these Shopify product titles from English to German.\n\n"
+            "Rules:\n"
+            "- Preserve brand names (Stanley, LuxeCarry, Bogg, etc.), model "
+            "numbers, and technical specs (40oz, 1.2L, SKU codes) verbatim.\n"
+            "- Produce natural, marketing-friendly German suitable for a "
+            "product listing (e.g. 'Premium ... Set').\n"
+            "- Keep punctuation and structure close to the original.\n"
+            "- Output exactly one item per input, preserving index order.\n\n"
+            f"Titles:\n{numbered}"
+        )
+        try:
+            resp = client.messages.parse(
+                model=TRANSLATE_MODEL,
+                max_tokens=16000,
+                messages=[{"role": "user", "content": prompt}],
+                output_format=TranslationBatch,
+            )
+        except Exception as e:
+            sys.exit(f"Claude API falhou: {e}")
+
+        parsed = resp.parsed_output
+        if not parsed:
+            sys.exit("Claude retornou resposta vazia ou invalida")
+        for item in parsed.items:
+            idx = item.index - 1 + start
+            if 0 <= idx < len(titles):
+                out[idx] = item.title_de.strip()
+
+    missing = [titles[i] for i, t in enumerate(out) if not t]
+    if missing:
+        sys.exit(f"traducao faltou pra: {missing}")
+    return out
+
+
+def run_translate_unmatched(src_shop, src_token, dst_shop, dst_token, apply):
+    """Traduz titulos dos produtos do dest sem SKU correspondente no source."""
+    print(f"lendo produtos do source ({src_shop}) pra montar set de SKUs...")
+    src_skus = set()
+    for p in fetch_products(src_shop, src_token):
+        if p["sku"]:
+            src_skus.add(p["sku"])
+    print(f"  {len(src_skus)} SKUs no source")
+
+    print(f"lendo produtos do dest ({dst_shop}) pra achar os sem match...")
+    unmatched = []
+    for dst_p in fetch_products(dst_shop, dst_token):
+        if not dst_p["sku"]:
+            continue
+        if dst_p["sku"] in src_skus:
+            continue
+        unmatched.append(dst_p)
+    print(f"  {len(unmatched)} produtos sem match no source")
+
+    if not unmatched:
+        print("nada pra fazer.")
+        return
+
+    print(f"\ntraduzindo {len(unmatched)} titulos via {TRANSLATE_MODEL}...")
+    de_titles = translate_titles_ai([p["title"] for p in unmatched])
+
+    planned = []
+    already_ok = 0
+    for dst_p, de_title in zip(unmatched, de_titles):
+        if de_title == dst_p["title"]:
+            already_ok += 1
+            continue
+        planned.append(
+            {
+                "id": dst_p["id"],
+                "sku": dst_p["sku"],
+                "title_old": dst_p["title"],
+                "title_new": de_title,
+            }
+        )
+
+    print("\nresumo:")
+    print(f"  traduzir:  {len(planned)}")
+    print(f"  ja alemao: {already_ok}")
+
+    preview = planned[:25]
+    if preview:
+        print("\npreview:")
+        for u in preview:
+            print(f"  [{u['sku']}] {u['title_old']!r}")
+            print(f"      -> {u['title_new']!r}")
+        if len(planned) > len(preview):
+            print(f"  ... +{len(planned) - len(preview)} mais")
+
+    if not apply:
+        print("\ndry-run. rode de novo com --apply pra escrever.")
+        return
+
+    print(f"\naplicando {len(planned)} updates no dest...")
+    ok = err = 0
+    for i, u in enumerate(planned, 1):
+        try:
+            ue = apply_product_update(
+                dst_shop, dst_token, {"id": u["id"], "title": u["title_new"]}
+            )
+            if ue:
+                print(f"  [{i}/{len(planned)}] ERRO {u['sku']}: {ue}")
+                err += 1
+            else:
+                print(f"  [{i}/{len(planned)}] ok  {u['sku']}")
+                ok += 1
+        except Exception as e:
+            print(f"  [{i}/{len(planned)}] ERRO {u['sku']}: {e}")
+            err += 1
+    print(f"\nfim. {ok} atualizados, {err} erros.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -415,6 +569,14 @@ def main():
         "--inspect",
         metavar="SKU",
         help="dumpa 1 produto das 2 lojas pra diagnostico (nao roda sync)",
+    )
+    ap.add_argument(
+        "--translate-unmatched",
+        action="store_true",
+        help=(
+            "traduz via Claude EN->DE os titulos dos produtos do dest que "
+            "nao tem match no source. Requer ANTHROPIC_API_KEY."
+        ),
     )
     args = ap.parse_args()
 
@@ -436,6 +598,12 @@ def main():
     if args.inspect:
         inspect_product(source["shop"], src_token, args.inspect, "SOURCE")
         inspect_product(dest["shop"], dst_token, args.inspect, "DEST")
+        return
+
+    if args.translate_unmatched:
+        run_translate_unmatched(
+            source["shop"], src_token, dest["shop"], dst_token, apply=args.apply
+        )
         return
 
     print(f"lendo produtos do source ({source['shop']})...")
