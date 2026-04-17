@@ -333,10 +333,88 @@ def sync_options_live(shop, token, product_id, src_options):
     return errors, applied
 
 
+INSPECT_QUERY = """
+query($sku: String!) {
+  productVariants(first: 5, query: $sku) {
+    nodes {
+      sku
+      product {
+        id
+        title
+        handle
+        descriptionHtml
+        hasOnlyDefaultVariant
+        options {
+          id
+          name
+          position
+          optionValues {
+            id
+            name
+            hasVariants
+            linkedMetafieldValue
+          }
+          linkedMetafield { namespace key }
+        }
+        variants(first: 100) {
+          nodes {
+            id
+            sku
+            title
+            selectedOptions { name value }
+          }
+        }
+        translations(locale: "en") { key value locale outdated }
+      }
+    }
+  }
+}
+"""
+
+
+def inspect_product(shop, token, sku, label):
+    print(f"\n===== {label} ({shop}) SKU={sku} =====")
+    data = gql(shop, token, INSPECT_QUERY, {"sku": f"sku:{sku}"})
+    variants = data["productVariants"]["nodes"]
+    if not variants:
+        print("  (nao encontrado)")
+        return
+    product = variants[0]["product"]
+    print(f"  id:           {product['id']}")
+    print(f"  title:        {product['title']!r}")
+    print(f"  handle:       {product['handle']}")
+    print(f"  defaultOnly:  {product['hasOnlyDefaultVariant']}")
+    print(f"  descr len:    {len(product['descriptionHtml'] or '')} chars")
+    print(f"  options ({len(product['options'])}):")
+    for o in product["options"]:
+        lm = o.get("linkedMetafield")
+        lm_s = f"  linkedMetafield={lm['namespace']}.{lm['key']}" if lm else ""
+        print(f"    [{o['position']}] {o['name']!r}{lm_s}")
+        for v in o["optionValues"]:
+            lmv = v.get("linkedMetafieldValue")
+            lmv_s = f"  lmv={lmv!r}" if lmv else ""
+            print(f"        - {v['name']!r}  hasVariants={v['hasVariants']}{lmv_s}")
+    print(f"  variants ({len(product['variants']['nodes'])}):")
+    for v in product["variants"]["nodes"][:10]:
+        opts = ", ".join(f"{so['name']}={so['value']!r}" for so in v["selectedOptions"])
+        print(f"    sku={v['sku']!r} title={v['title']!r} [{opts}]")
+    trs = product.get("translations") or []
+    print(f"  translations locale=en ({len(trs)}):")
+    for t in trs[:20]:
+        outdated = " [OUTDATED]" if t.get("outdated") else ""
+        val = (t["value"] or "")[:80]
+        print(f"    {t['key']!r} = {val!r}{outdated}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--apply", action="store_true", help="escreve (default: dry-run)"
+    )
+    ap.add_argument(
+        "--inspect",
+        metavar="SKU",
+        help="dumpa 1 produto das 2 lojas pra diagnostico (nao roda sync)",
     )
     args = ap.parse_args()
 
@@ -354,6 +432,11 @@ def main():
     print("autenticando nas duas lojas...")
     src_token = get_access_token(**source)
     dst_token = get_access_token(**dest)
+
+    if args.inspect:
+        inspect_product(source["shop"], src_token, args.inspect, "SOURCE")
+        inspect_product(dest["shop"], dst_token, args.inspect, "DEST")
+        return
 
     print(f"lendo produtos do source ({source['shop']})...")
     src_by_sku = {}
