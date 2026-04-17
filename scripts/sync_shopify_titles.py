@@ -173,6 +173,28 @@ mutation(
 }
 """
 
+PRODUCT_OPTIONS_QUERY = """
+query($id: ID!) {
+  product(id: $id) {
+    id
+    options {
+      id
+      name
+      position
+      optionValues { id name }
+    }
+  }
+}
+"""
+
+
+def fetch_product_options_fresh(shop, token, product_id):
+    data = gql(shop, token, PRODUCT_OPTIONS_QUERY, {"id": product_id})
+    p = data.get("product")
+    if not p:
+        return None
+    return p["options"] or []
+
 
 def _norm(s):
     return s if (s is not None and s != "") else None
@@ -250,6 +272,67 @@ def apply_option_update(shop, token, payload):
     return data["productOptionUpdate"]["userErrors"]
 
 
+def sync_options_live(shop, token, product_id, src_options):
+    """Re-fetch dest options (fresh IDs) and apply option+value renames.
+
+    Shopify rejected pre-planned option IDs as RESOURCE_NOT_FOUND after a
+    productUpdate on the same product, so this always reads the current
+    option/value IDs from the destination right before the mutation.
+    Returns (errors: list[str], applied: int).
+    """
+    try:
+        dst_options = fetch_product_options_fresh(shop, token, product_id)
+    except Exception as e:
+        return [f"fetch options falhou: {e}"], 0
+    if dst_options is None:
+        return ["produto nao encontrado no dest"], 0
+
+    src_opts = sorted(src_options, key=lambda o: o["position"])
+    dst_opts = sorted(dst_options, key=lambda o: o["position"])
+
+    if len(src_opts) != len(dst_opts):
+        return [
+            f"estrutura mudou desde o plan: options src={len(src_opts)} dst={len(dst_opts)}"
+        ], 0
+
+    errors = []
+    applied = 0
+    for s, d in zip(src_opts, dst_opts):
+        if len(s["optionValues"]) != len(d["optionValues"]):
+            errors.append(
+                f"option '{d['name']}' qtd values mudou: src={len(s['optionValues'])} dst={len(d['optionValues'])}"
+            )
+            continue
+
+        option_input = {"id": d["id"]}
+        name_changed = s["name"] != d["name"]
+        if name_changed:
+            option_input["name"] = s["name"]
+
+        values_to_update = []
+        for sv, dv in zip(s["optionValues"], d["optionValues"]):
+            if sv["name"] != dv["name"]:
+                values_to_update.append({"id": dv["id"], "name": sv["name"]})
+
+        if not name_changed and not values_to_update:
+            continue
+
+        payload = {
+            "productId": product_id,
+            "option": option_input,
+            "optionValuesToUpdate": values_to_update,
+        }
+        try:
+            ue = apply_option_update(shop, token, payload)
+            if ue:
+                errors.append(f"option '{d['name']}': {ue}")
+            else:
+                applied += 1
+        except Exception as e:
+            errors.append(f"option '{d['name']}': {e}")
+    return errors, applied
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -319,6 +402,7 @@ def main():
                 "title_new": src_p["title"],
                 "product_input": product_input,
                 "option_ops": option_ops,
+                "src_options": src_p["options"] if option_ops else None,
             }
         )
 
@@ -358,23 +442,40 @@ def main():
         return
 
     print(f"\naplicando {len(planned)} produtos...")
-    ok = err = 0
+    ok = err = partial = 0
     for i, u in enumerate(planned, 1):
         errors_here = []
+
         if u["product_input"]:
-            errors_here += apply_product_update(
-                dest["shop"], dst_token, u["product_input"]
+            try:
+                ue = apply_product_update(
+                    dest["shop"], dst_token, u["product_input"]
+                )
+                if ue:
+                    errors_here.append(f"productUpdate: {ue}")
+            except Exception as e:
+                errors_here.append(f"productUpdate: {e}")
+
+        if u["src_options"]:
+            opt_errors, _applied = sync_options_live(
+                dest["shop"], dst_token, u["id"], u["src_options"]
             )
-        for op in u["option_ops"]:
-            errors_here += apply_option_update(dest["shop"], dst_token, op)
+            errors_here += opt_errors
 
         if errors_here:
-            print(f"  [{i}/{len(planned)}] ERRO {u['sku']}: {errors_here}")
-            err += 1
+            status = "ERRO" if not u["product_input"] else "PARCIAL"
+            # if product_input succeeded but options failed, it's partial
+            if u["product_input"] and all("option" in e.lower() for e in errors_here):
+                status = "PARCIAL"
+                partial += 1
+            else:
+                err += 1
+            print(f"  [{i}/{len(planned)}] {status} {u['sku']}: {errors_here}")
         else:
             print(f"  [{i}/{len(planned)}] ok  {u['sku']}")
             ok += 1
-    print(f"\nfim. {ok} atualizados, {err} erros.")
+
+    print(f"\nfim. {ok} ok, {partial} parciais, {err} erros.")
 
 
 if __name__ == "__main__":
