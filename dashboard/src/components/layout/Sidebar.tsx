@@ -4,22 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Building2,
   ArrowLeftRight,
   TrendingUp,
   Users,
   Eye,
-  BookOpen,
+  Plug,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Visao Geral", icon: LayoutDashboard },
-  { href: "/entity/dsj_network", label: "Por Empresa", icon: Building2 },
   { href: "/transactions", label: "Transacoes", icon: ArrowLeftRight },
-  { href: "/pnl", label: "P&L", icon: TrendingUp },
+  { href: "/pnl", label: "P&L Mensal", icon: TrendingUp },
   { href: "/investments", label: "Investimentos", icon: Users },
   { href: "/preview", label: "Preview Vitrine", icon: Eye },
-  { href: "/rules", label: "Regras AI", icon: BookOpen },
+  { href: "/integrations", label: "Integracoes", icon: Plug },
 ];
 
 export function Sidebar() {
