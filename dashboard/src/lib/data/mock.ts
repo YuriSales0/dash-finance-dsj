@@ -7,6 +7,10 @@ import type {
   Investment,
   InvestorMetrics,
   EntityId,
+  Receivable,
+  Debt,
+  Financing,
+  RiskMetric,
 } from "@/types/database";
 
 // ============================================================
@@ -363,5 +367,155 @@ export const MOCK_INVESTOR_METRICS: InvestorMetrics = {
   opportunities_loss_count: 0,
   total_capital_returned: 90_000,
   visible: true,
+  generated_at: new Date().toISOString(),
+};
+
+// ============================================================
+// RECEIVABLES — Recebiveis (DSJ tem direito a receber)
+// ============================================================
+const today = new Date();
+const daysFrom = (d: number) => {
+  const x = new Date(today);
+  x.setDate(x.getDate() + d);
+  return x.toISOString().slice(0, 10);
+};
+
+export const MOCK_RECEIVABLES: Receivable[] = [
+  {
+    id: 1, entity_id: "dsj_network", description: "Payout Shopify - vendas Mar/26",
+    counterparty: "Shopify Payments", amount_total: 45_200, amount_received: 0,
+    currency: "USD", issue_date: daysFrom(-3), due_date: daysFrom(11),
+    status: "pending", open_for_financing: true,
+    financing_interest_rate_pct: 2.5, financing_min_amount: 1000,
+    financing_max_amount: 30_000, financing_redemption_days: 14,
+    financing_terms: "Antecipacao de payout Shopify. Garantido pelos pedidos ja capturados.",
+    financing_raised: 7500, source: "manual", source_ref: "PAY-2026-0312",
+    notes: null, created_by: null, created_at: daysFrom(-3) + "T10:00:00Z",
+  },
+  {
+    id: 2, entity_id: "dsj_network", description: "Stripe - reserva 3% sobre vendas",
+    counterparty: "Stripe", amount_total: 12_800, amount_received: 0,
+    currency: "USD", issue_date: daysFrom(-30), due_date: daysFrom(60),
+    status: "pending", open_for_financing: true,
+    financing_interest_rate_pct: 3.5, financing_min_amount: 500,
+    financing_max_amount: 10_000, financing_redemption_days: 60,
+    financing_terms: "Reserva tecnica do Stripe sera liberada em 60 dias.",
+    financing_raised: 0, source: "manual", source_ref: null,
+    notes: "Reserva atual de 3% sobre processamento", created_by: null,
+    created_at: daysFrom(-30) + "T10:00:00Z",
+  },
+  {
+    id: 3, entity_id: "universal_mkt", description: "Payout PayPal Europa",
+    counterparty: "PayPal", amount_total: 18_500, amount_received: 0,
+    currency: "GBP", issue_date: daysFrom(-1), due_date: daysFrom(7),
+    status: "pending", open_for_financing: false,
+    financing_interest_rate_pct: null, financing_min_amount: null,
+    financing_max_amount: null, financing_redemption_days: null,
+    financing_terms: null, financing_raised: 0, source: "manual",
+    source_ref: "PP-EU-2026-0408", notes: null, created_by: null,
+    created_at: daysFrom(-1) + "T10:00:00Z",
+  },
+  {
+    id: 4, entity_id: "dsj_network", description: "Reembolso Meta Ads (creditos)",
+    counterparty: "Meta Platforms", amount_total: 3_200, amount_received: 3_200,
+    currency: "USD", issue_date: daysFrom(-60), due_date: daysFrom(-15),
+    status: "paid", open_for_financing: false,
+    financing_interest_rate_pct: null, financing_min_amount: null,
+    financing_max_amount: null, financing_redemption_days: null,
+    financing_terms: null, financing_raised: 0, source: "manual",
+    source_ref: null, notes: "Pago em 12/Mar", created_by: null,
+    created_at: daysFrom(-60) + "T10:00:00Z",
+  },
+];
+
+// ============================================================
+// DEBTS — Dividas (DSJ tem que pagar)
+// ============================================================
+export const MOCK_DEBTS: Debt[] = [
+  {
+    id: 1, entity_id: "dsj_network", description: "Fatura CJ Dropshipping Mar/26",
+    creditor: "CJ Dropshipping", amount_total: 28_400, amount_paid: 0,
+    currency: "USD", issue_date: daysFrom(-10), due_date: daysFrom(20),
+    interest_rate_pct: 0, status: "pending", category: "cost_products",
+    source: "manual", notes: null, created_by: null,
+    created_at: daysFrom(-10) + "T10:00:00Z",
+  },
+  {
+    id: 2, entity_id: "dsj_network", description: "Salarios equipe Mar/26",
+    creditor: "Folha de pagamento", amount_total: 22_000, amount_paid: 0,
+    currency: "USD", issue_date: daysFrom(-2), due_date: daysFrom(3),
+    interest_rate_pct: 0, status: "pending", category: "cost_team",
+    source: "manual", notes: null, created_by: null,
+    created_at: daysFrom(-2) + "T10:00:00Z",
+  },
+  {
+    id: 3, entity_id: "universal_mkt", description: "Tributos UK Q1/26",
+    creditor: "HMRC", amount_total: 8_900, amount_paid: 0,
+    currency: "GBP", issue_date: daysFrom(-15), due_date: daysFrom(45),
+    interest_rate_pct: 5, status: "pending", category: "cost_legal",
+    source: "manual", notes: null, created_by: null,
+    created_at: daysFrom(-15) + "T10:00:00Z",
+  },
+  {
+    id: 4, entity_id: "dsj_connect", description: "Hosting AWS Mar/26",
+    creditor: "Amazon Web Services", amount_total: 1_850, amount_paid: 1_850,
+    currency: "USD", issue_date: daysFrom(-30), due_date: daysFrom(-5),
+    interest_rate_pct: 0, status: "paid", category: "cost_infra",
+    source: "manual", notes: null, created_by: null,
+    created_at: daysFrom(-30) + "T10:00:00Z",
+  },
+];
+
+// ============================================================
+// FINANCINGS — Investidor financia recebivel
+// ============================================================
+export const MOCK_FINANCINGS: Financing[] = [
+  {
+    id: 1, receivable_id: 1, investor_id: 1,
+    amount_invested: 5000, interest_rate_pct: 2.5, redemption_days: 14,
+    expected_return: 5125, status: "active", contract_hash: "fin-abc123",
+    contract_signed_at: daysFrom(-2) + "T10:00:00Z",
+    confirmed_at: daysFrom(-2) + "T11:00:00Z",
+    redemption_date: daysFrom(11), redeemed_at: null, actual_return: null,
+    created_at: daysFrom(-2) + "T10:00:00Z",
+  },
+  {
+    id: 2, receivable_id: 1, investor_id: 2,
+    amount_invested: 2500, interest_rate_pct: 2.5, redemption_days: 14,
+    expected_return: 2562.5, status: "active", contract_hash: "fin-def456",
+    contract_signed_at: daysFrom(-1) + "T10:00:00Z",
+    confirmed_at: daysFrom(-1) + "T11:00:00Z",
+    redemption_date: daysFrom(11), redeemed_at: null, actual_return: null,
+    created_at: daysFrom(-1) + "T10:00:00Z",
+  },
+];
+
+// ============================================================
+// RISK METRIC — Indice de risco atual
+// ============================================================
+export const MOCK_RISK_METRIC: RiskMetric = {
+  id: 1, snapshot_date: daysFrom(0),
+  cash_balance_usd: 274_500,
+  receivables_pending: 76_500, receivables_overdue: 0,
+  debts_pending: 60_300, debts_overdue: 0,
+  daily_ad_spend: 4_200, monthly_revenue: 195_400, monthly_costs: 159_240,
+  avg_days_to_receive: 22.5, avg_days_to_pay: 18.0,
+  burn_rate: 159_240, runway_days: 51.7,
+  cash_after_obligations: 290_700,
+  risk_score: 32,
+  risk_level: "medium",
+  ai_analysis: "Posicao financeira saudavel mas com concentracao em payouts curtos. Risco principal: travamento de processador de pagamento (Stripe ou PayPal) por mais de 7 dias geraria deficit de caixa. Recomenda-se manter reserva de 30 dias de burn rate.",
+  ai_recommendations: "1. Diversificar processadores: nao concentrar mais de 50% em um unico. 2. Reduzir concentracao em Meta Ads (atualmente 60% do gasto). 3. Negociar payout em D+1 com Shopify (atualmente D+3).",
+  factors: {
+    burn_to_cash_ratio: 0.58,
+    receivables_concentration_top1: 0.59,
+    overdue_pct: 0,
+    ad_spend_pct_of_revenue: 0.65,
+  },
+  scenarios: {
+    stripe_freeze_7d: { cash_impact: -29_400, runway_impact_days: -7 },
+    stripe_freeze_30d: { cash_impact: -126_000, runway_impact_days: -30, risk_level: "critical" },
+    revenue_drop_50pct: { cash_impact: -97_700, runway_impact_days: -15 },
+  },
   generated_at: new Date().toISOString(),
 };

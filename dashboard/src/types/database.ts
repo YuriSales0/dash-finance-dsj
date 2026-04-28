@@ -203,6 +203,112 @@ export interface OperationUpdate {
   visible_to_investor: boolean;
 }
 
+export type UserRole = "dsj" | "investor";
+
+export interface UserRoleRow {
+  user_id: string;
+  role: UserRole;
+  name: string;
+  email: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export type ReceivableStatus = "pending" | "partial" | "paid" | "overdue" | "defaulted";
+
+export interface Receivable {
+  id: number;
+  entity_id: EntityId;
+  description: string;
+  counterparty: string | null;
+  amount_total: number;
+  amount_received: number;
+  currency: string;
+  issue_date: string;
+  due_date: string;
+  status: ReceivableStatus;
+  open_for_financing: boolean;
+  financing_interest_rate_pct: number | null;
+  financing_min_amount: number | null;
+  financing_max_amount: number | null;
+  financing_redemption_days: number | null;
+  financing_terms: string | null;
+  financing_raised: number;
+  source: "manual" | "transaction" | "shopify" | "gateway";
+  source_ref: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type DebtStatus = "pending" | "partial" | "paid" | "overdue";
+
+export interface Debt {
+  id: number;
+  entity_id: EntityId;
+  description: string;
+  creditor: string | null;
+  amount_total: number;
+  amount_paid: number;
+  currency: string;
+  issue_date: string;
+  due_date: string;
+  interest_rate_pct: number | null;
+  status: DebtStatus;
+  category: string | null;
+  source: "manual" | "transaction" | "supplier";
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type FinancingStatus = "pending" | "active" | "redeemed" | "defaulted" | "cancelled";
+
+export interface Financing {
+  id: number;
+  receivable_id: number;
+  investor_id: number;
+  amount_invested: number;
+  interest_rate_pct: number;
+  redemption_days: number;
+  expected_return: number;
+  status: FinancingStatus;
+  contract_hash: string | null;
+  contract_signed_at: string | null;
+  confirmed_at: string | null;
+  redemption_date: string | null;
+  redeemed_at: string | null;
+  actual_return: number | null;
+  created_at: string;
+}
+
+export type RiskLevel = "low" | "medium" | "high" | "critical";
+
+export interface RiskMetric {
+  id: number;
+  snapshot_date: string;
+  cash_balance_usd: number | null;
+  receivables_pending: number | null;
+  receivables_overdue: number | null;
+  debts_pending: number | null;
+  debts_overdue: number | null;
+  daily_ad_spend: number | null;
+  monthly_revenue: number | null;
+  monthly_costs: number | null;
+  avg_days_to_receive: number | null;
+  avg_days_to_pay: number | null;
+  burn_rate: number | null;
+  runway_days: number | null;
+  cash_after_obligations: number | null;
+  risk_score: number | null;
+  risk_level: RiskLevel | null;
+  ai_analysis: string | null;
+  ai_recommendations: string | null;
+  factors: Record<string, unknown> | null;
+  scenarios: Record<string, unknown> | null;
+  generated_at: string;
+}
+
 // Supabase Database type (para tipagem do client)
 export interface Database {
   public: {

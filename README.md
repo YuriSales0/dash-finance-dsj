@@ -1,6 +1,6 @@
 # DSJ Finance — AI-First Bookkeeping & Investment Platform
 
-Sistema de bookkeeping unificado para 3 empresas com 5 contas bancárias, classificação automática via AI, e plataforma privada de investimento (SCP).
+Sistema de bookkeeping unificado para 3 empresas + plataforma privada de antecipação de recebíveis com índice de risco operado por AI.
 
 ## Empresas
 
@@ -14,50 +14,67 @@ Sistema de bookkeeping unificado para 3 empresas com 5 contas bancárias, classi
 
 - **Next.js 14** (App Router) + TypeScript
 - **Tailwind CSS** + Recharts
-- **Supabase** (PostgreSQL + Auth + RLS) — opcional, fallback pra demo
-- **Claude API** (Haiku) — classificação de transações
-- **N8N** — orquestrador (sync bancos, geração P&L)
+- **Supabase** (PostgreSQL + Auth + RLS)
+- **Claude Haiku** (classificação + índice de risco)
 - **Vercel** — hosting
 
-## Rodar o demo (sem APIs reais)
+## Roles
 
-```bash
-cd dashboard
-npm install
-npm run dev
-```
+- **DSJ** (operador): CRUD completo, integrações, recebíveis, dívidas, índice de risco
+- **Investidor** (visualizador): vê números curados da DSJ, financia recebíveis abertos
 
-Abrir [http://localhost:3000](http://localhost:3000). Tudo funciona com dados ficticios.
+## Rotas principais
 
-As 6 telas:
-- `/` — Visão consolidada (saldos, KPIs, gráfico 12 meses)
-- `/transactions` — Lista + review com correção/aprendizado
-- `/pnl` — P&L mensal por empresa (seletor consolidado/individual)
-- `/investments` — Admin investidores + oportunidades
-- `/preview` — Preview da vitrine que o investidor vê
-- `/integrations` — Status das integrações (Supabase, bancos, Claude, N8N)
+**Admin (DSJ):**
+- `/admin` — Visão consolidada
+- `/admin/risk` — Índice de risco com AI + cenários what-if
+- `/admin/receivables` — CRUD de recebíveis (manual ou abertos para investidor)
+- `/admin/debts` — CRUD de dívidas
+- `/admin/transactions` — Lista + review de classificação AI
+- `/admin/pnl` — P&L mensal por empresa
+- `/admin/investments` — Admin de investidores + oportunidades
+- `/admin/preview` — Preview da vitrine
+- `/admin/integrations` — Status das integrações
 
-## Conectar APIs reais
+**Investidor:**
+- `/investor` — Métricas curadas + chamada de ação
+- `/investor/opportunities` — Recebíveis abertos para financiamento
+- `/investor/portfolio` — Financiamentos ativos + histórico
 
-1. Criar projeto Supabase + rodar `database/001-010.sql`
-2. Configurar APIs (Mercury, Revolut, Airwallex, Anthropic) — ver `/integrations` no app
-3. Copiar `.env.local.example` → `.env.local` e preencher
-4. Setar `DEMO_MODE=false`
-5. Implementar métodos do `SupabaseRepository` em `dashboard/src/lib/data/repository.ts`
+## Setup
+
+1. Rodar `database/full_schema.sql` no Supabase SQL Editor
+2. No Supabase Auth: criar primeiro usuário DSJ
+3. No SQL Editor: vincular role
+   ```sql
+   INSERT INTO user_roles (user_id, role, name, email)
+   SELECT id, 'dsj', 'Seu Nome', email FROM auth.users WHERE email = 'seu@email.com';
+   ```
+4. Configurar env vars no Vercel:
+   - `DEMO_MODE=false`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `ANTHROPIC_API_KEY` (opcional, para análise AI do índice de risco)
+
+## Modo demo
+
+Sem auth: `DEMO_MODE=true` (default). Tudo funciona com dados ficticios. Bom pra apresentação e desenvolvimento.
 
 ## Estrutura
 
 ```
-database/    SQL migrations (12 arquivos)
-workflows/   N8N workflows (a criar quando ligar)
-prompts/     Prompts da AI
-docs/SPEC.md Spec completa do sistema
-dashboard/   Next.js app
+database/         SQL migrations + full_schema.sql
+docs/SPEC.md      Spec completa
+dashboard/        Next.js app
   src/
-    app/(admin)/      — Telas admin
-    app/(investor)/   — Portal do investidor (futuro)
-    lib/data/         — Repository (mock + supabase)
-    lib/supabase/     — Clients
-    components/       — UI reutilizavel
-    types/database.ts — Tipos das tabelas
+    app/admin/    — Telas DSJ
+    app/investor/ — Portal do investidor
+    app/login/    — Auth
+    app/api/      — Endpoints (recebiveis, dividas, financings)
+    lib/data/     — Repository (mock | supabase)
+    lib/risk/     — Cálculo do índice de risco + AI
+    lib/supabase/ — Clients + session helpers
+    components/   — UI reutilizável
+    types/        — Tipos das tabelas
 ```
