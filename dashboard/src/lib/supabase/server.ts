@@ -1,11 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
 
 export function createServerClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  return createClient<Database>(supabaseUrl, serviceKey, {
+  return createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false },
   });
 }
