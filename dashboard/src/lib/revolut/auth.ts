@@ -1,10 +1,22 @@
 import { SignJWT, importPKCS8 } from "jose";
+import { createPrivateKey } from "node:crypto";
 
 const REVOLUT_PROD_URL = "https://b2b.revolut.com/api/1.0";
 const REVOLUT_SANDBOX_URL = "https://sandbox-b2b.revolut.com/api/1.0";
 
 export function getApiBase(sandbox: boolean): string {
   return sandbox ? REVOLUT_SANDBOX_URL : REVOLUT_PROD_URL;
+}
+
+// Aceita PKCS#1 (BEGIN RSA PRIVATE KEY) ou PKCS#8 (BEGIN PRIVATE KEY)
+// e retorna sempre em PKCS#8 (que jose requer)
+function normalizePrivateKey(pem: string): string {
+  if (pem.includes("BEGIN PRIVATE KEY")) {
+    return pem; // ja eh PKCS#8
+  }
+  // Converter PKCS#1 -> PKCS#8 usando Node crypto
+  const keyObject = createPrivateKey({ key: pem, format: "pem" });
+  return keyObject.export({ format: "pem", type: "pkcs8" }) as string;
 }
 
 // URL para o usuario autorizar o app no Revolut
@@ -40,7 +52,8 @@ async function signClientAssertion(
     ? "https://revolut.com"
     : "https://revolut.com";
 
-  const key = await importPKCS8(privateKeyPem, "RS256");
+  const normalizedPem = normalizePrivateKey(privateKeyPem);
+  const key = await importPKCS8(normalizedPem, "RS256");
 
   const now = Math.floor(Date.now() / 1000);
 
