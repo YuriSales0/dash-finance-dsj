@@ -3,8 +3,9 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SettingsForms } from "./SettingsForms";
+import { CategoriesEditor } from "./CategoriesEditor";
 import { RevolutSetup } from "@/components/integrations/RevolutSetup";
-import { Building2, Plug, ScrollText, Loader2, Save, AlertTriangle, CheckCircle, Eye } from "lucide-react";
+import { Building2, Plug, ScrollText, Tags, Loader2, Save, AlertTriangle, CheckCircle, Eye } from "lucide-react";
 
 interface AccountOpt {
   id: string;
@@ -14,7 +15,7 @@ interface AccountOpt {
 }
 
 interface Props {
-  activeTab: "entities" | "integrations" | "contract";
+  activeTab: "entities" | "integrations" | "contract" | "categories";
   entities: any[];
   revolutAccounts: AccountOpt[];
 }
@@ -46,6 +47,9 @@ function Inner({ activeTab, entities, revolutAccounts }: Props) {
         <TabButton active={tab === "entities"} onClick={() => changeTab("entities")} icon={<Building2 size={14} />}>
           Empresas e contas
         </TabButton>
+        <TabButton active={tab === "categories"} onClick={() => changeTab("categories")} icon={<Tags size={14} />}>
+          Categorias
+        </TabButton>
         <TabButton active={tab === "integrations"} onClick={() => changeTab("integrations")} icon={<Plug size={14} />}>
           Integracoes
         </TabButton>
@@ -55,6 +59,7 @@ function Inner({ activeTab, entities, revolutAccounts }: Props) {
       </div>
 
       {tab === "entities" && <SettingsForms entities={entities} />}
+      {tab === "categories" && <CategoriesEditor />}
       {tab === "integrations" && <RevolutSetup accounts={revolutAccounts} />}
       {tab === "contract" && <ContractEditor />}
     </div>
