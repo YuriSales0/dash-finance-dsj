@@ -32,7 +32,8 @@ export function formatDateTime(dateStr: string): string {
   });
 }
 
-export const entityColors: Record<string, string> = {
+// Cores fixas para empresas conhecidas
+const KNOWN_COLORS: Record<string, string> = {
   dsj_network: "#3b82f6",
   universal_mkt: "#8b5cf6",
   dsj_connect: "#06b6d4",
@@ -40,10 +41,47 @@ export const entityColors: Record<string, string> = {
   consolidated: "#10b981",
 };
 
-export const entityNames: Record<string, string> = {
+// Paleta de fallback para empresas novas (gerada deterministicamente pelo id)
+const FALLBACK_PALETTE = [
+  "#ef4444", "#f97316", "#eab308", "#84cc16", "#22c55e",
+  "#14b8a6", "#0ea5e9", "#6366f1", "#a855f7", "#ec4899",
+  "#f43f5e", "#d946ef",
+];
+
+function hashString(s: string): number {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = (hash << 5) - hash + s.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+// Proxy: retorna cor fixa se conhecida, senao gera deterministicamente
+export const entityColors: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_target, prop: string) {
+    if (KNOWN_COLORS[prop]) return KNOWN_COLORS[prop];
+    return FALLBACK_PALETTE[hashString(prop) % FALLBACK_PALETTE.length];
+  },
+});
+
+// Nomes hardcoded para retrocompatibilidade
+const KNOWN_NAMES: Record<string, string> = {
   dsj_network: "DSJ Network LLC",
   universal_mkt: "Universal MKT LLP",
   dsj_connect: "DSJ Connect LLC",
   dsj_commerce: "DSJ Commerce LTDA",
   consolidated: "Consolidado",
 };
+
+// Proxy: retorna nome conhecido ou faz prettify do id
+export const entityNames: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_target, prop: string) {
+    if (KNOWN_NAMES[prop]) return KNOWN_NAMES[prop];
+    // Fallback: capitalizar e remover underscores
+    return prop
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  },
+});
