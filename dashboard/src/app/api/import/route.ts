@@ -138,6 +138,21 @@ export async function POST(request: Request) {
       });
     }
 
+    // Criar batch de import para permitir undo
+    let importBatchId: number | null = null;
+    if (newOnes.length > 0) {
+      const { data: batchRow } = await sb.from("import_batches").insert({
+        bank_account_id,
+        entity_id,
+        format: fmt,
+        file_name: body.file_name || null,
+        total_rows: rows.length,
+        rows_normalized: normalized.length,
+        rows_skipped_duplicates: skipped,
+      }).select("id").single();
+      if (batchRow) importBatchId = (batchRow as any).id;
+    }
+
     // Classificar e inserir em lotes
     let imported = 0;
     let needsReviewCount = 0;
@@ -152,6 +167,7 @@ export async function POST(request: Request) {
           if (cls.needs_review) needsReviewCount++;
           return {
             external_id: tx.external_id,
+            import_batch_id: importBatchId,
             bank_account_id: tx.bank_account_id,
             entity_id: tx.entity_id,
             timestamp: tx.timestamp,
@@ -228,7 +244,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // Atualizar contagens finais no batch
+    if (importBatchId) {
+      await sb.from("import_batches").update({
+        rows_imported: imported,
+        rows_needs_review: needsReviewCount,
+        pnl_months_regenerated: pnlGenerated,
+        intercompany_detected: intercompanyDetected,
+      }).eq("id", importBatchId);
+    }
+
     return NextResponse.json({
+      batch_id: importBatchId,
       format: fmt,
       total_rows: rows.length,
       normalized: normalized.length,

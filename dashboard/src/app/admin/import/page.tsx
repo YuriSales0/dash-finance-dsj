@@ -1,5 +1,6 @@
 import { Header } from "@/components/layout/Header";
 import { ImportForm } from "@/components/import/ImportForm";
+import { ImportHistory } from "@/components/import/ImportHistory";
 import { repository } from "@/lib/data/repository";
 import { entityNames, formatDateTime } from "@/lib/format";
 import { Info, Upload, Calendar } from "lucide-react";
@@ -71,6 +72,8 @@ export default async function ImportPage() {
         </div>
 
         <ImportForm accounts={options} />
+
+        <ImportHistory />
       </div>
     </>
   );
