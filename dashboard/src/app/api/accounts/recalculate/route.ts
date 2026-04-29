@@ -4,8 +4,10 @@ import { isDemoMode } from "@/lib/data/repository";
 
 export const maxDuration = 30;
 
-// Recalcula balance_current de cada conta como soma das transacoes + saldo inicial (opcional)
-// initial_balance permite definir saldo antes do periodo importado
+// Recalcula balance_current de cada conta como soma das transacoes + saldo inicial
+// Opcoes:
+//   initial_balances: { account_id: number } - saldo antes do periodo importado
+//   exclude_intercompany: bool - exclui transferencias intercompany (saldo "operacional")
 export async function POST(request: Request) {
   try {
     if (isDemoMode) {
@@ -13,7 +15,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { initial_balances }: { initial_balances?: Record<string, number> } = body;
+    const initial_balances: Record<string, number> = body.initial_balances || {};
+    const exclude_intercompany: boolean = !!body.exclude_intercompany;
 
     const sb = createServerClient();
 
@@ -25,18 +28,22 @@ export async function POST(request: Request) {
     const results: any[] = [];
 
     for (const acc of (accounts as any[]) || []) {
-      // Somar todas as transacoes da conta
-      const { data: txs } = await sb
+      let q = sb
         .from("transactions")
-        .select("amount_original")
+        .select("amount_original, is_intercompany")
         .eq("bank_account_id", acc.id);
 
-      const sum = ((txs as any[]) || []).reduce(
-        (s, t) => s + Number(t.amount_original || 0),
-        0
-      );
+      if (exclude_intercompany) {
+        q = q.eq("is_intercompany", false);
+      }
 
-      const initial = initial_balances?.[acc.id] || 0;
+      const { data: txs } = await q;
+
+      const list = (txs as any[]) || [];
+      const sum = list.reduce((s, t) => s + Number(t.amount_original || 0), 0);
+      const intercompanyCount = list.filter((t) => t.is_intercompany).length;
+
+      const initial = initial_balances[acc.id] || 0;
       const newBalance = initial + sum;
 
       await sb
@@ -51,13 +58,14 @@ export async function POST(request: Request) {
         id: acc.id,
         currency: acc.currency,
         transactions_sum: sum,
+        intercompany_count: intercompanyCount,
         initial_balance: initial,
         new_balance: newBalance,
-        transactions_count: txs?.length || 0,
+        transactions_count: list.length,
       });
     }
 
-    return NextResponse.json({ ok: true, results });
+    return NextResponse.json({ ok: true, exclude_intercompany, results });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

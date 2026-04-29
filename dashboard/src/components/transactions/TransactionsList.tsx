@@ -48,6 +48,8 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editCategory, setEditCategory] = useState<string>("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [marking, setMarking] = useState(false);
 
   const accountMap = useMemo(() => {
     return Object.fromEntries(accounts.map((a) => [a.id, a]));
@@ -117,6 +119,49 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
     } else if (preset === "ytd") {
       setDateFrom(`${now.getFullYear()}-01-01`);
     }
+  }
+
+  function toggleSelect(id: number) {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  }
+
+  async function markAsIntercompany() {
+    const ids = Array.from(selectedIds);
+    if (ids.length < 1) return;
+    const isPair = ids.length === 2;
+    const confirm_msg = isPair
+      ? "Marcar essas 2 transacoes como UM PAR de intercompany?"
+      : `Marcar ${ids.length} transacoes como intercompany?`;
+    if (!confirm(confirm_msg)) return;
+
+    setMarking(true);
+    await fetch("/api/intercompany/mark", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, pair: isPair }),
+    });
+    setMarking(false);
+    setSelectedIds(new Set());
+    window.location.reload();
+  }
+
+  async function unmarkIntercompany() {
+    const ids = Array.from(selectedIds);
+    if (ids.length < 1) return;
+    if (!confirm(`Desmarcar ${ids.length} transacao(oes) como intercompany?`)) return;
+
+    setMarking(true);
+    await fetch("/api/intercompany/mark", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    setMarking(false);
+    setSelectedIds(new Set());
+    window.location.reload();
   }
 
   function handleSaveCategory() {
@@ -225,12 +270,47 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
         </div>
       </div>
 
+      {/* Barra de acoes em lote */}
+      {selectedIds.size > 0 && (
+        <div className="card card-body bg-blue-50 border-blue-200 flex items-center justify-between">
+          <div className="text-sm text-blue-900">
+            <strong>{selectedIds.size}</strong> selecionada(s)
+            {selectedIds.size === 2 && " — pode marcar como par intercompany"}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={markAsIntercompany}
+              disabled={marking}
+              className="btn-primary text-xs inline-flex items-center gap-1"
+            >
+              {marking && <span className="animate-spin">⏳</span>}
+              <ArrowRightLeft size={12} />
+              {selectedIds.size === 2 ? "Marcar par como intercompany" : "Marcar como intercompany"}
+            </button>
+            <button
+              onClick={unmarkIntercompany}
+              disabled={marking}
+              className="btn-secondary text-xs"
+            >
+              Desmarcar
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-blue-700 hover:underline px-2"
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Lista */}
       <div className="card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
+                <th className="w-8 py-3 px-2"></th>
                 <th className="text-left py-3 px-4 font-medium text-slate-500">Data</th>
                 <th className="text-left py-3 px-4 font-medium text-slate-500">Empresa / Banco</th>
                 <th className="text-left py-3 px-4 font-medium text-slate-500">Contraparte</th>
@@ -243,7 +323,7 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
             <tbody>
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-400">
+                  <td colSpan={8} className="text-center py-8 text-slate-400">
                     Nenhuma transacao encontrada com esses filtros
                   </td>
                 </tr>
@@ -252,7 +332,15 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
                 const acc = accountMap[t.bank_account_id];
                 const cat = CATEGORIES.find((c) => c.id === t.category_id);
                 return (
-                  <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <tr key={t.id} className={`border-b border-slate-100 hover:bg-slate-50 ${selectedIds.has(t.id) ? "bg-blue-50" : ""}`}>
+                    <td className="py-3 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(t.id)}
+                        onChange={() => toggleSelect(t.id)}
+                        className="rounded"
+                      />
+                    </td>
                     <td className="py-3 px-4 text-xs text-slate-500">
                       {formatDate(t.timestamp)}
                     </td>

@@ -126,29 +126,50 @@ export function SettingsForms({
     router.refresh();
   }
 
-  async function recalculateBalances() {
-    if (!confirm(
-      "Recalcular saldos baseado nas transacoes importadas?\n\n" +
-      "Isso vai SOBRESCREVER os saldos atuais com a soma das transacoes de cada conta.\n\n" +
-      "Use isso quando quiser que o saldo seja calculado automaticamente."
-    )) return;
+  async function recalculateBalances(excludeIntercompany = false) {
+    const msg = excludeIntercompany
+      ? "Recalcular saldo OPERACIONAL (excluindo intercompany)?\n\nMostra como se o dinheiro nunca tivesse saido do grupo DSJ."
+      : "Recalcular saldos REAIS baseado nas transacoes importadas?\n\nIsso vai SOBRESCREVER os saldos atuais com a soma das transacoes de cada conta.\n\nUse para refletir o saldo real do banco apos os imports.";
 
-    setLoading("recalc");
+    if (!confirm(msg)) return;
+
+    setLoading(excludeIntercompany ? "recalc-op" : "recalc");
     setMsg(null);
 
     const res = await fetch("/api/accounts/recalculate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ exclude_intercompany: excludeIntercompany }),
     });
 
     setLoading(null);
     const data = await res.json();
     if (res.ok) {
       const summary = (data.results || [])
-        .map((r: any) => `${r.id}: ${r.new_balance.toFixed(2)} ${r.currency} (${r.transactions_count} txs)`)
+        .map((r: any) => `${r.id}: ${Number(r.new_balance).toFixed(2)} ${r.currency} (${r.transactions_count} txs${r.intercompany_count ? `, ${r.intercompany_count} intercompany` : ""})`)
         .join(" | ");
-      setMsg(`Saldos recalculados: ${summary}`);
+      setMsg(`Saldos recalculados${excludeIntercompany ? " (sem intercompany)" : ""}: ${summary}`);
+      router.refresh();
+    } else {
+      setMsg(`Erro: ${data.error}`);
+    }
+  }
+
+  async function redetectIntercompany() {
+    if (!confirm("Re-detectar intercompany com janela de 30 dias e tolerancia 5%?")) return;
+    setLoading("redetect");
+    setMsg(null);
+
+    const res = await fetch("/api/intercompany/redetect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 30, tolerance_pct: 5 }),
+    });
+
+    setLoading(null);
+    const data = await res.json();
+    if (res.ok) {
+      setMsg(`Re-deteccao: ${data.pairs_detected} pares detectados, ${data.transactions_marked} transacoes marcadas.`);
       router.refresh();
     } else {
       setMsg(`Erro: ${data.error}`);
@@ -181,26 +202,69 @@ export function SettingsForms({
         </div>
       )}
 
-      {/* Acao: recalcular saldos */}
-      <div className="card card-body bg-slate-50 border-slate-200">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="font-semibold text-sm flex items-center gap-2">
-              <Calculator size={16} /> Recalcular saldos automaticamente
-            </p>
-            <p className="text-xs text-slate-600 mt-1">
-              Calcula o saldo de cada conta como soma das transacoes importadas. Util apos
-              importar varios extratos para ver os saldos refletidos no Overview.
-            </p>
+      {/* Acoes de manutencao do bookkeeping */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Calculator size={16} /> Manutencao de saldos
+          </h3>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {/* 1: Re-detectar intercompany */}
+          <div className="px-4 py-3 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-sm">Re-detectar intercompany</p>
+              <p className="text-xs text-slate-600">
+                Procura novos pares DSJ ↔ Universal com janela de 30 dias e tolerancia 5%.
+                Faca isso ANTES de recalcular se transferencias internas nao foram detectadas.
+              </p>
+            </div>
+            <button
+              onClick={redetectIntercompany}
+              disabled={loading === "redetect"}
+              className="btn-secondary inline-flex items-center gap-2 text-sm whitespace-nowrap"
+            >
+              {loading === "redetect" ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
+              Detectar
+            </button>
           </div>
-          <button
-            onClick={recalculateBalances}
-            disabled={loading === "recalc"}
-            className="btn-secondary inline-flex items-center gap-2 text-sm whitespace-nowrap"
-          >
-            {loading === "recalc" ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
-            Recalcular
-          </button>
+
+          {/* 2: Recalcular saldos REAIS */}
+          <div className="px-4 py-3 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-sm">Recalcular saldos reais</p>
+              <p className="text-xs text-slate-600">
+                Soma todas transacoes (incluindo intercompany). Reflete o saldo real do banco.
+              </p>
+            </div>
+            <button
+              onClick={() => recalculateBalances(false)}
+              disabled={loading === "recalc"}
+              className="btn-secondary inline-flex items-center gap-2 text-sm whitespace-nowrap"
+            >
+              {loading === "recalc" ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
+              Recalcular
+            </button>
+          </div>
+
+          {/* 3: Recalcular saldo operacional */}
+          <div className="px-4 py-3 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-sm">Recalcular saldo operacional</p>
+              <p className="text-xs text-slate-600">
+                Exclui intercompany — mostra como se o dinheiro nunca tivesse saido do grupo.
+                Util pra entender lucro real do bookkeeping.
+              </p>
+            </div>
+            <button
+              onClick={() => recalculateBalances(true)}
+              disabled={loading === "recalc-op"}
+              className="btn-secondary inline-flex items-center gap-2 text-sm whitespace-nowrap"
+            >
+              {loading === "recalc-op" ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
+              Operacional
+            </button>
+          </div>
         </div>
       </div>
 
