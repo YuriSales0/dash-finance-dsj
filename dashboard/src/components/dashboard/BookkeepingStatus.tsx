@@ -29,6 +29,7 @@ export function BookkeepingStatus({
 }: Props) {
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
   async function generatePnl() {
@@ -53,6 +54,28 @@ export function BookkeepingStatus({
     setGenerating(false);
   }
 
+  async function syncAll() {
+    setSyncing(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/sync-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setResult(`Sync OK: ${(data.log || []).join(" | ")}`);
+        router.refresh();
+      } else {
+        setResult(`Erro: ${data.error}`);
+      }
+    } catch (err: any) {
+      setResult(`Erro: ${err.message}`);
+    }
+    setSyncing(false);
+  }
+
   const isHealthy =
     pendingReviews === 0 && receivablesOverdue === 0 && debtsOverdue === 0;
 
@@ -63,14 +86,25 @@ export function BookkeepingStatus({
           <TrendingUp size={16} className="text-slate-600" />
           <h3 className="font-semibold">Status do Bookkeeping</h3>
         </div>
-        <button
-          onClick={generatePnl}
-          disabled={generating}
-          className="btn-secondary text-xs inline-flex items-center gap-1.5"
-        >
-          {generating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          Regenerar P&L
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={syncAll}
+            disabled={syncing || generating}
+            className="btn-primary text-xs inline-flex items-center gap-1.5"
+            title="Recalcula saldos + regenera P&L + detecta intercompany"
+          >
+            {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            Sincronizar tudo
+          </button>
+          <button
+            onClick={generatePnl}
+            disabled={generating || syncing}
+            className="btn-secondary text-xs inline-flex items-center gap-1.5"
+          >
+            {generating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            Regenerar P&L
+          </button>
+        </div>
       </div>
       <div className="card-body">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
