@@ -24,7 +24,7 @@ export default async function SettingsPage({
     (a) => a.bank_name.toLowerCase().includes("revolut") || a.api_provider === "revolut"
   );
 
-  const tab = (searchParams.tab as "entities" | "integrations" | "contract" | "categories") || "entities";
+  const tab = (searchParams.tab as "entities" | "integrations" | "contract" | "categories" | "ai") || "entities";
 
   return (
     <>

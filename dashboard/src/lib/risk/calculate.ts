@@ -1,6 +1,7 @@
 import { repository } from "@/lib/data/repository";
 import type { RiskMetric, RiskLevel } from "@/types/database";
 import { convertToUsd } from "@/lib/fx/rates";
+import { getAnthropicKey } from "@/lib/anthropic/key";
 
 // ============================================================
 // Calculadora do Indice de Risco
@@ -215,7 +216,7 @@ export async function generateAIAnalysis(calc: RiskCalculation): Promise<{
   analysis: string;
   recommendations: string;
 }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getAnthropicKey();
 
   if (!apiKey) {
     // Fallback sem AI: gerar analise heuristica

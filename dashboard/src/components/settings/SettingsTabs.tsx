@@ -4,8 +4,9 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SettingsForms } from "./SettingsForms";
 import { CategoriesEditor } from "./CategoriesEditor";
+import { AnthropicEditor } from "./AnthropicEditor";
 import { RevolutSetup } from "@/components/integrations/RevolutSetup";
-import { Building2, Plug, ScrollText, Tags, Loader2, Save, AlertTriangle, CheckCircle, Eye } from "lucide-react";
+import { Building2, Plug, ScrollText, Tags, Sparkles, Loader2, Save, AlertTriangle, CheckCircle, Eye } from "lucide-react";
 
 interface AccountOpt {
   id: string;
@@ -15,7 +16,7 @@ interface AccountOpt {
 }
 
 interface Props {
-  activeTab: "entities" | "integrations" | "contract" | "categories";
+  activeTab: "entities" | "integrations" | "contract" | "categories" | "ai";
   entities: any[];
   revolutAccounts: AccountOpt[];
 }
@@ -50,8 +51,11 @@ function Inner({ activeTab, entities, revolutAccounts }: Props) {
         <TabButton active={tab === "categories"} onClick={() => changeTab("categories")} icon={<Tags size={14} />}>
           Categorias
         </TabButton>
+        <TabButton active={tab === "ai"} onClick={() => changeTab("ai")} icon={<Sparkles size={14} />}>
+          IA (Claude)
+        </TabButton>
         <TabButton active={tab === "integrations"} onClick={() => changeTab("integrations")} icon={<Plug size={14} />}>
-          Integracoes
+          Bancos
         </TabButton>
         <TabButton active={tab === "contract"} onClick={() => changeTab("contract")} icon={<ScrollText size={14} />}>
           Contrato SCP
@@ -60,6 +64,7 @@ function Inner({ activeTab, entities, revolutAccounts }: Props) {
 
       {tab === "entities" && <SettingsForms entities={entities} />}
       {tab === "categories" && <CategoriesEditor />}
+      {tab === "ai" && <AnthropicEditor />}
       {tab === "integrations" && <RevolutSetup accounts={revolutAccounts} />}
       {tab === "contract" && <ContractEditor />}
     </div>

@@ -1,4 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getAnthropicKey } from "@/lib/anthropic/key";
 import type { NormalizedTransaction } from "./normalize";
 
 export interface ClassificationResult {
@@ -83,7 +84,7 @@ export async function classifyByAI(
   entityName: string,
   bankName: string
 ): Promise<ClassificationResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getAnthropicKey();
   if (!apiKey) {
     return {
       category_id: null,
