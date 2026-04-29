@@ -36,6 +36,7 @@ export const entityColors: Record<string, string> = {
   dsj_network: "#3b82f6",
   universal_mkt: "#8b5cf6",
   dsj_connect: "#06b6d4",
+  dsj_commerce: "#f59e0b",
   consolidated: "#10b981",
 };
 
@@ -43,5 +44,6 @@ export const entityNames: Record<string, string> = {
   dsj_network: "DSJ Network LLC",
   universal_mkt: "Universal MKT LLP",
   dsj_connect: "DSJ Connect LLC",
+  dsj_commerce: "DSJ Commerce LTDA",
   consolidated: "Consolidado",
 };

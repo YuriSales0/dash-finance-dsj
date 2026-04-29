@@ -1,4 +1,5 @@
 import type {
+  Entity,
   BankAccount,
   Transaction,
   MonthlyPnl,
@@ -18,27 +19,23 @@ import type {
 // Trocar para Supabase real via env DEMO_MODE=false
 // ============================================================
 
+export const MOCK_ENTITIES: Entity[] = [
+  { id: "dsj_network", name: "DSJ Network LLC", jurisdiction: "Florida, USA", currency_default: "USD" },
+  { id: "universal_mkt", name: "Universal MKT LLP", jurisdiction: "London, UK", currency_default: "GBP" },
+  { id: "dsj_connect", name: "DSJ Connect LLC", jurisdiction: "Delaware, USA", currency_default: "USD" },
+  { id: "dsj_commerce", name: "DSJ Commerce LTDA", jurisdiction: "Brasil", currency_default: "BRL" },
+];
+
 export const MOCK_BANK_ACCOUNTS: BankAccount[] = [
-  {
-    id: "dsj_net_mercury",
-    entity_id: "dsj_network",
-    bank_name: "Mercury",
-    currency: "USD",
-    api_provider: "mercury",
-    last_synced_at: new Date(Date.now() - 1000 * 60 * 23).toISOString(),
-    balance_current: 142_580.34,
-    balance_available: 138_290.10,
-    active: true,
-  },
   {
     id: "dsj_net_revolut",
     entity_id: "dsj_network",
     bank_name: "Revolut",
     currency: "USD",
     api_provider: "revolut",
-    last_synced_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    balance_current: 38_420.91,
-    balance_available: 38_420.91,
+    last_synced_at: null,
+    balance_current: 142_580.34,
+    balance_available: 138_290.10,
     active: true,
   },
   {
@@ -64,12 +61,12 @@ export const MOCK_BANK_ACCOUNTS: BankAccount[] = [
     active: true,
   },
   {
-    id: "dsj_con_mercury",
+    id: "dsj_con_revolut",
     entity_id: "dsj_connect",
-    bank_name: "Mercury",
+    bank_name: "Revolut",
     currency: "USD",
-    api_provider: "mercury",
-    last_synced_at: new Date(Date.now() - 1000 * 60 * 41).toISOString(),
+    api_provider: "revolut",
+    last_synced_at: null,
     balance_current: 28_450.00,
     balance_available: 28_450.00,
     active: true,

@@ -1,4 +1,5 @@
 import type {
+  Entity,
   BankAccount,
   Transaction,
   MonthlyPnl,
@@ -13,6 +14,7 @@ import type {
   RiskMetric,
 } from "@/types/database";
 import {
+  MOCK_ENTITIES,
   MOCK_BANK_ACCOUNTS,
   MOCK_TRANSACTIONS,
   MOCK_MONTHLY_PNL,
@@ -35,7 +37,16 @@ import {
 const DEMO_MODE = process.env.DEMO_MODE?.toLowerCase() !== "false";
 
 export interface Repository {
+  // Empresas
+  getEntities(): Promise<Entity[]>;
+  createEntity(data: Partial<Entity>): Promise<Entity>;
+  deleteEntity(id: string): Promise<void>;
+
+  // Contas bancarias
   getBankAccounts(): Promise<BankAccount[]>;
+  createBankAccount(data: Partial<BankAccount>): Promise<BankAccount>;
+  updateBankAccount(id: string, data: Partial<BankAccount>): Promise<void>;
+  deleteBankAccount(id: string): Promise<void>;
   getTransactions(filters?: {
     entity_id?: EntityId;
     bank_account_id?: string;
@@ -85,8 +96,49 @@ export interface Repository {
 // ============================================================
 
 class MockRepository implements Repository {
+  async getEntities() {
+    return MOCK_ENTITIES;
+  }
+  async createEntity(data: Partial<Entity>): Promise<Entity> {
+    const e: Entity = {
+      id: data.id || data.name?.toLowerCase().replace(/\s+/g, "_").slice(0, 30) || "new",
+      name: data.name || "",
+      jurisdiction: data.jurisdiction || null,
+      currency_default: data.currency_default || "USD",
+    };
+    MOCK_ENTITIES.push(e);
+    return e;
+  }
+  async deleteEntity(id: string) {
+    const idx = MOCK_ENTITIES.findIndex((e) => e.id === id);
+    if (idx >= 0) MOCK_ENTITIES.splice(idx, 1);
+  }
+
   async getBankAccounts() {
-    return MOCK_BANK_ACCOUNTS;
+    return MOCK_BANK_ACCOUNTS.filter((a) => a.active);
+  }
+  async createBankAccount(data: Partial<BankAccount>): Promise<BankAccount> {
+    const a: BankAccount = {
+      id: data.id || `${data.entity_id}_${data.bank_name?.toLowerCase().replace(/\s+/g, "_")}`,
+      entity_id: (data.entity_id || "dsj_network") as EntityId,
+      bank_name: data.bank_name || "",
+      currency: data.currency || "USD",
+      api_provider: data.api_provider || "manual",
+      last_synced_at: null,
+      balance_current: data.balance_current || 0,
+      balance_available: data.balance_available || 0,
+      active: true,
+    };
+    MOCK_BANK_ACCOUNTS.push(a);
+    return a;
+  }
+  async updateBankAccount(id: string, data: Partial<BankAccount>) {
+    const a = MOCK_BANK_ACCOUNTS.find((x) => x.id === id);
+    if (a) Object.assign(a, data);
+  }
+  async deleteBankAccount(id: string) {
+    const a = MOCK_BANK_ACCOUNTS.find((x) => x.id === id);
+    if (a) a.active = false;
   }
 
   async getTransactions(filters: {
@@ -265,6 +317,24 @@ class SupabaseRepository implements Repository {
     return createServerClient();
   }
 
+  async getEntities(): Promise<Entity[]> {
+    const { data, error } = await this.db.from("entities").select("*").neq("id", "consolidated").order("name");
+    if (error) throw error;
+    return (data || []) as Entity[];
+  }
+
+  async createEntity(d: Partial<Entity>): Promise<Entity> {
+    const id = d.id || d.name?.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 30) || "new";
+    const { data, error } = await this.db.from("entities").insert({ id, ...d }).select().single();
+    if (error) throw error;
+    return data as Entity;
+  }
+
+  async deleteEntity(id: string) {
+    const { error } = await this.db.from("entities").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   async getBankAccounts(): Promise<BankAccount[]> {
     const { data, error } = await this.db
       .from("bank_accounts")
@@ -273,6 +343,32 @@ class SupabaseRepository implements Repository {
       .order("entity_id");
     if (error) throw error;
     return (data || []) as BankAccount[];
+  }
+
+  async createBankAccount(d: Partial<BankAccount>): Promise<BankAccount> {
+    const id = d.id || `${d.entity_id}_${(d.bank_name || "bank").toLowerCase().replace(/\s+/g, "_")}`;
+    const { data, error } = await this.db.from("bank_accounts").insert({
+      id,
+      entity_id: d.entity_id,
+      bank_name: d.bank_name,
+      currency: d.currency || "USD",
+      api_provider: d.api_provider || "manual",
+      balance_current: d.balance_current || 0,
+      balance_available: d.balance_available || 0,
+      manual_balance: true,
+    }).select().single();
+    if (error) throw error;
+    return data as BankAccount;
+  }
+
+  async updateBankAccount(id: string, d: Partial<BankAccount>) {
+    const { error } = await this.db.from("bank_accounts").update(d).eq("id", id);
+    if (error) throw error;
+  }
+
+  async deleteBankAccount(id: string) {
+    const { error } = await this.db.from("bank_accounts").update({ active: false }).eq("id", id);
+    if (error) throw error;
   }
 
   async getTransactions(filters: {

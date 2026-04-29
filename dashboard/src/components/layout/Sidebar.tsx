@@ -13,6 +13,7 @@ import {
   CreditCard,
   Activity,
   Upload,
+  Settings,
   LogOut,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/admin/pnl", label: "P&L Mensal", icon: TrendingUp },
   { href: "/admin/investments", label: "Investimentos", icon: Users },
   { href: "/admin/preview", label: "Preview Vitrine", icon: Eye },
+  { href: "/admin/settings", label: "Configuracoes", icon: Settings },
   { href: "/admin/integrations", label: "Integracoes", icon: Plug },
 ];
 

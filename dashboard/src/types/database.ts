@@ -1,4 +1,4 @@
-export type EntityId = "dsj_network" | "universal_mkt" | "dsj_connect" | "consolidated";
+export type EntityId = string;
 
 export type CategoryGroup = "revenue" | "cost_variable" | "cost_fixed" | "transfer" | "investment";
 
@@ -10,7 +10,7 @@ export type OpportunityStatus = "draft" | "open" | "funded" | "active" | "comple
 
 export type InvestmentStatus = "pending" | "confirmed" | "active" | "returned" | "partial_loss";
 
-export type ApiProvider = "mercury" | "revolut" | "airwallex";
+export type ApiProvider = "mercury" | "revolut" | "airwallex" | "manual" | string;
 
 export interface Entity {
   id: EntityId;
