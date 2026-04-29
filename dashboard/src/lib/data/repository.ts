@@ -118,8 +118,20 @@ class MockRepository implements Repository {
     return MOCK_BANK_ACCOUNTS.filter((a) => a.active);
   }
   async createBankAccount(data: Partial<BankAccount>): Promise<BankAccount> {
+    const currency = (data.currency || "USD").toLowerCase();
+    const id = data.id || `${data.entity_id}_${data.bank_name?.toLowerCase().replace(/\s+/g, "_")}_${currency}`;
+    // Reativa se ja existe
+    const existing = MOCK_BANK_ACCOUNTS.find((x) => x.id === id);
+    if (existing) {
+      Object.assign(existing, {
+        active: true,
+        balance_current: data.balance_current || 0,
+        balance_available: data.balance_available || 0,
+      });
+      return existing;
+    }
     const a: BankAccount = {
-      id: data.id || `${data.entity_id}_${data.bank_name?.toLowerCase().replace(/\s+/g, "_")}`,
+      id,
       entity_id: (data.entity_id || "dsj_network") as EntityId,
       bank_name: data.bank_name || "",
       currency: data.currency || "USD",
@@ -349,9 +361,34 @@ class SupabaseRepository implements Repository {
   }
 
   async createBankAccount(d: Partial<BankAccount>): Promise<BankAccount> {
-    const id = d.id || `${d.entity_id}_${(d.bank_name || "bank").toLowerCase().replace(/\s+/g, "_")}`;
+    const currency = (d.currency || "USD").toLowerCase();
+    const baseId = d.id || `${d.entity_id}_${(d.bank_name || "bank").toLowerCase().replace(/\s+/g, "_")}_${currency}`;
+
+    // Verificar se ja existe (incluindo desativada). Se sim, reativa em vez de tentar criar.
+    const { data: existing } = await this.db
+      .from("bank_accounts")
+      .select("*")
+      .eq("id", baseId)
+      .maybeSingle();
+
+    if (existing) {
+      const { data, error } = await this.db
+        .from("bank_accounts")
+        .update({
+          active: true,
+          balance_current: d.balance_current || 0,
+          balance_available: d.balance_available || 0,
+          api_provider: d.api_provider || (existing as any).api_provider || "manual",
+        })
+        .eq("id", baseId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as BankAccount;
+    }
+
     const { data, error } = await this.db.from("bank_accounts").insert({
-      id,
+      id: baseId,
       entity_id: d.entity_id,
       bank_name: d.bank_name,
       currency: d.currency || "USD",
