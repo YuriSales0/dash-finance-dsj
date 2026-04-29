@@ -9,7 +9,7 @@ export async function updateSession(request: NextRequest) {
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const demoMode = process.env.DEMO_MODE !== "false";
+  const demoMode = process.env.DEMO_MODE?.toLowerCase() !== "false";
 
   // Em demo: nao ha auth, libera tudo
   if (demoMode || !url || !key) return supabaseResponse;

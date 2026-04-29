@@ -32,7 +32,7 @@ import {
 // DEMO_MODE=false: usa Supabase real
 // ============================================================
 
-const DEMO_MODE = process.env.DEMO_MODE !== "false";
+const DEMO_MODE = process.env.DEMO_MODE?.toLowerCase() !== "false";
 
 export interface Repository {
   getBankAccounts(): Promise<BankAccount[]>;
