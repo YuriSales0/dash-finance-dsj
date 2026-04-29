@@ -10,28 +10,38 @@ export function getApiBase(sandbox: boolean): string {
 
 // Aceita PKCS#1 (BEGIN RSA PRIVATE KEY) ou PKCS#8 (BEGIN PRIVATE KEY)
 // e retorna sempre em PKCS#8 (que jose requer)
+// Normalizacao robusta: extrai body, remove qualquer caractere fora do base64,
+// e reconstroi PEM com line breaks corretas (64 chars por linha)
 function normalizePrivateKey(pem: string): string {
-  // Limpar input: trim, normalizar line endings, remover linhas vazias extras
-  let cleaned = pem
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .trim();
+  // Tentar extrair os marcadores BEGIN/END
+  const match = pem.match(
+    /-----BEGIN\s+(RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----([\s\S]*?)-----\s*END\s+(?:RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----/i
+  );
 
-  // Se a chave foi colada sem quebras de linha, reconstruir
-  if (!cleaned.includes("\n")) {
-    const match = cleaned.match(/^(-----BEGIN [A-Z ]+?-----)(.+?)(-----END [A-Z ]+?-----)$/);
-    if (match) {
-      const body = match[2].match(/.{1,64}/g)?.join("\n") || match[2];
-      cleaned = `${match[1]}\n${body}\n${match[3]}`;
-    }
+  if (!match) {
+    throw new Error(
+      "Chave invalida: nao encontrei os marcadores -----BEGIN...PRIVATE KEY----- e -----END...-----. Cole a chave inteira."
+    );
   }
 
+  const keyType = match[1].replace(/\s+/g, " ").toUpperCase();
+  // Remover TUDO que nao seja base64 valido
+  const body = match[2].replace(/[^A-Za-z0-9+/=]/g, "");
+
+  if (body.length < 100) {
+    throw new Error("Chave invalida: corpo muito curto. Cole a chave completa.");
+  }
+
+  // Reformatar com 64 chars por linha
+  const lines = body.match(/.{1,64}/g)!.join("\n");
+  const reconstructed = `-----BEGIN ${keyType}-----\n${lines}\n-----END ${keyType}-----\n`;
+
   try {
-    const keyObject = createPrivateKey({ key: cleaned, format: "pem" });
+    const keyObject = createPrivateKey({ key: reconstructed, format: "pem" });
     return keyObject.export({ format: "pem", type: "pkcs8" }) as string;
   } catch (err: any) {
     throw new Error(
-      `Nao foi possivel ler a chave privada. Verifique se ela comeca com -----BEGIN PRIVATE KEY----- (ou -----BEGIN RSA PRIVATE KEY-----) e termina com -----END...-----. Detalhe: ${err.message}`
+      `Nao foi possivel decodificar a chave privada. Detalhe: ${err.message}`
     );
   }
 }
