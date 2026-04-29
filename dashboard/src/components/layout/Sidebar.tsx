@@ -26,17 +26,11 @@ const navItems = [
   { href: "/admin/risk", label: "Indice de Risco", icon: Activity },
   { href: "/admin/import", label: "Importar CSV", icon: Upload },
   { href: "/admin/transactions", label: "Transacoes", icon: ArrowLeftRight },
-  { href: "/admin/reconciliation", label: "Reconciliacao", icon: Scale },
-  { href: "/admin/audit", label: "Auditoria", icon: Search },
   { href: "/admin/receivables", label: "Recebiveis", icon: FileText },
   { href: "/admin/debts", label: "Dividas", icon: CreditCard },
   { href: "/admin/pnl", label: "P&L Mensal", icon: TrendingUp },
   { href: "/admin/investments", label: "Investimentos", icon: Users },
-  { href: "/admin/contract", label: "Contrato SCP", icon: ScrollText },
-  { href: "/admin/invite", label: "Gerar convite", icon: Link2 },
-  { href: "/admin/preview", label: "Preview Vitrine", icon: Eye },
   { href: "/admin/settings", label: "Configuracoes", icon: Settings },
-  { href: "/admin/integrations", label: "Integracoes", icon: Plug },
 ];
 
 interface Props {

@@ -1,11 +1,15 @@
 import { Header } from "@/components/layout/Header";
 import { repository } from "@/lib/data/repository";
-import { formatCurrency, entityNames } from "@/lib/format";
-import { SettingsForms } from "@/components/settings/SettingsForms";
+import { entityNames } from "@/lib/format";
+import { SettingsTabs } from "@/components/settings/SettingsTabs";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: { tab?: string };
+}) {
   const [entities, accounts] = await Promise.all([
     repository.getEntities(),
     repository.getBankAccounts(),
@@ -16,14 +20,29 @@ export default async function SettingsPage() {
     accounts: accounts.filter((a) => a.entity_id === e.id),
   }));
 
+  const revolutAccounts = accounts.filter(
+    (a) => a.bank_name.toLowerCase().includes("revolut") || a.api_provider === "revolut"
+  );
+
+  const tab = (searchParams.tab as "entities" | "integrations" | "contract") || "entities";
+
   return (
     <>
       <Header
         title="Configuracoes"
-        subtitle="Empresas, contas bancarias e saldos"
+        subtitle="Empresas, integracoes e contrato SCP"
       />
-      <div className="p-6 max-w-4xl space-y-6">
-        <SettingsForms entities={entitiesWithAccounts} />
+      <div className="p-6 max-w-5xl">
+        <SettingsTabs
+          activeTab={tab}
+          entities={entitiesWithAccounts}
+          revolutAccounts={revolutAccounts.map((a) => ({
+            id: a.id,
+            entity_id: a.entity_id,
+            bank_name: a.bank_name,
+            currency: a.currency,
+          }))}
+        />
       </div>
     </>
   );

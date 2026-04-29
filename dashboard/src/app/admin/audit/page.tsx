@@ -1,18 +1,5 @@
-import { Header } from "@/components/layout/Header";
-import { AuditView } from "@/components/audit/AuditView";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default function AuditPage() {
-  return (
-    <>
-      <Header
-        title="Auditoria"
-        subtitle="Compara saldo das transacoes vs P&L. Detecta divergencias."
-      />
-      <div className="p-6">
-        <AuditView />
-      </div>
-    </>
-  );
+export default function RedirectAudit() {
+  redirect("/admin/transactions?tab=audit");
 }
