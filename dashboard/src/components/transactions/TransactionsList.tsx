@@ -5,11 +5,12 @@ import type { Transaction, BankAccount, EntityId } from "@/types/database";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
-import { Search, Filter, AlertCircle, ArrowRightLeft } from "lucide-react";
+import { Search, AlertCircle, ArrowRightLeft, Calendar } from "lucide-react";
 
 interface Props {
   transactions: Transaction[];
   accounts: BankAccount[];
+  entities?: { id: string; name: string }[];
 }
 
 const CATEGORIES = [
@@ -27,15 +28,24 @@ const CATEGORIES = [
   { id: "cost_saas", label: "SaaS" },
   { id: "cost_infra", label: "Infra" },
   { id: "cost_legal", label: "Legal" },
+  { id: "cost_office", label: "Escritorio" },
   { id: "transfer_intercompany", label: "Intercompany" },
   { id: "transfer_interbank", label: "Interbank" },
   { id: "transfer_fx", label: "Cambio" },
+  { id: "investment_scp_in", label: "Aporte investidor" },
+  { id: "investment_scp_out", label: "Retorno investidor" },
 ];
 
-export function TransactionsList({ transactions, accounts }: Props) {
+const PAGE_SIZE = 100;
+
+export function TransactionsList({ transactions, accounts, entities = [] }: Props) {
   const [filter, setFilter] = useState<"all" | "review">("all");
-  const [entityFilter, setEntityFilter] = useState<EntityId | "all">("all");
+  const [entityFilter, setEntityFilter] = useState<string>("all");
+  const [bankFilter, setBankFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editCategory, setEditCategory] = useState<string>("");
 
@@ -43,10 +53,25 @@ export function TransactionsList({ transactions, accounts }: Props) {
     return Object.fromEntries(accounts.map((a) => [a.id, a]));
   }, [accounts]);
 
+  // Lista de empresas: usa as passadas, senao deduz das transacoes
+  const entityOptions = useMemo(() => {
+    if (entities.length > 0) return entities;
+    const ids = new Set(transactions.map((t) => t.entity_id));
+    return Array.from(ids).map((id) => ({ id, name: entityNames[id] || id }));
+  }, [entities, transactions]);
+
+  // Lista de bancos baseado na empresa selecionada
+  const bankOptions = useMemo(() => {
+    return accounts.filter(
+      (a) => entityFilter === "all" || a.entity_id === entityFilter
+    );
+  }, [accounts, entityFilter]);
+
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
       if (filter === "review" && !t.needs_review) return false;
       if (entityFilter !== "all" && t.entity_id !== entityFilter) return false;
+      if (bankFilter !== "all" && t.bank_account_id !== bankFilter) return false;
       if (search) {
         const s = search.toLowerCase();
         const matches =
@@ -54,15 +79,48 @@ export function TransactionsList({ transactions, accounts }: Props) {
           (t.description?.toLowerCase() || "").includes(s);
         if (!matches) return false;
       }
+      if (dateFrom) {
+        if (new Date(t.timestamp) < new Date(dateFrom + "T00:00:00")) return false;
+      }
+      if (dateTo) {
+        if (new Date(t.timestamp) > new Date(dateTo + "T23:59:59")) return false;
+      }
       return true;
     });
-  }, [transactions, filter, entityFilter, search]);
+  }, [transactions, filter, entityFilter, bankFilter, search, dateFrom, dateTo]);
 
   const reviewCount = transactions.filter((t) => t.needs_review).length;
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Reset page quando muda filtros
+  useMemo(() => setPage(1), [filter, entityFilter, bankFilter, search, dateFrom, dateTo]);
+
+  // Quick presets de periodo
+  function setPeriod(preset: "30d" | "90d" | "ytd" | "all") {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    if (preset === "all") {
+      setDateFrom("");
+      setDateTo("");
+      return;
+    }
+    setDateTo(today);
+    if (preset === "30d") {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 30);
+      setDateFrom(d.toISOString().slice(0, 10));
+    } else if (preset === "90d") {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 90);
+      setDateFrom(d.toISOString().slice(0, 10));
+    } else if (preset === "ytd") {
+      setDateFrom(`${now.getFullYear()}-01-01`);
+    }
+  }
 
   function handleSaveCategory() {
     if (!editing || !editCategory) return;
-    // Em demo, faz UPDATE in-memory. Em produção, chama API.
     fetch("/api/transactions/review", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -77,7 +135,7 @@ export function TransactionsList({ transactions, accounts }: Props) {
   return (
     <div className="space-y-4">
       {/* Filtros */}
-      <div className="card card-body">
+      <div className="card card-body space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -92,13 +150,27 @@ export function TransactionsList({ transactions, accounts }: Props) {
 
           <select
             value={entityFilter}
-            onChange={(e) => setEntityFilter(e.target.value as EntityId | "all")}
+            onChange={(e) => {
+              setEntityFilter(e.target.value);
+              setBankFilter("all");
+            }}
             className="input w-auto"
           >
             <option value="all">Todas empresas</option>
-            <option value="dsj_network">DSJ Network</option>
-            <option value="universal_mkt">Universal MKT</option>
-            <option value="dsj_connect">DSJ Connect</option>
+            {entityOptions.map((e) => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+
+          <select
+            value={bankFilter}
+            onChange={(e) => setBankFilter(e.target.value)}
+            className="input w-auto"
+          >
+            <option value="all">Todos bancos</option>
+            {bankOptions.map((a) => (
+              <option key={a.id} value={a.id}>{a.bank_name} ({a.currency})</option>
+            ))}
           </select>
 
           <div className="flex border border-slate-200 rounded-lg overflow-hidden">
@@ -121,6 +193,36 @@ export function TransactionsList({ transactions, accounts }: Props) {
             </button>
           </div>
         </div>
+
+        {/* Filtro de periodo */}
+        <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100">
+          <Calendar size={16} className="text-slate-400" />
+          <span className="text-xs font-medium text-slate-600">Periodo:</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="input text-sm py-1.5"
+            />
+            <span className="text-xs text-slate-500">ate</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="input text-sm py-1.5"
+            />
+          </div>
+          <div className="flex gap-1">
+            <button onClick={() => setPeriod("30d")} className="text-xs text-brand-600 hover:underline px-2">30d</button>
+            <button onClick={() => setPeriod("90d")} className="text-xs text-brand-600 hover:underline px-2">90d</button>
+            <button onClick={() => setPeriod("ytd")} className="text-xs text-brand-600 hover:underline px-2">YTD</button>
+            <button onClick={() => setPeriod("all")} className="text-xs text-slate-500 hover:underline px-2">Tudo</button>
+          </div>
+          <span className="text-xs text-slate-500 ml-auto">
+            <strong>{filtered.length}</strong> resultado(s)
+          </span>
+        </div>
       </div>
 
       {/* Lista */}
@@ -139,7 +241,14 @@ export function TransactionsList({ transactions, accounts }: Props) {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 100).map((t) => {
+              {pageRows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-center py-8 text-slate-400">
+                    Nenhuma transacao encontrada com esses filtros
+                  </td>
+                </tr>
+              )}
+              {pageRows.map((t) => {
                 const acc = accountMap[t.bank_account_id];
                 const cat = CATEGORIES.find((c) => c.id === t.category_id);
                 return (
@@ -209,9 +318,29 @@ export function TransactionsList({ transactions, accounts }: Props) {
             </tbody>
           </table>
         </div>
-        {filtered.length > 100 && (
-          <div className="px-4 py-3 text-xs text-slate-500 text-center border-t border-slate-200">
-            Mostrando 100 de {filtered.length} transacoes
+
+        {/* Paginacao */}
+        {totalPages > 1 && (
+          <div className="px-4 py-3 flex items-center justify-between border-t border-slate-200 text-xs">
+            <span className="text-slate-500">
+              Pagina {page} de {totalPages} • {filtered.length} resultados
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="btn-secondary text-xs disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="btn-secondary text-xs disabled:opacity-50"
+              >
+                Proxima
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -248,8 +377,8 @@ export function TransactionsList({ transactions, accounts }: Props) {
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900">
-              Ao salvar, uma <strong>regra de aprendizado</strong> sera criada para que a AI nao
-              erre mais transacoes desta contraparte.
+              Ao salvar, uma <strong>regra de aprendizado</strong> sera criada e aplicada
+              automaticamente a outras transacoes pendentes desta mesma contraparte.
             </div>
 
             <div className="flex justify-end gap-2">

@@ -37,6 +37,33 @@ export default async function OverviewPage() {
     }
   }
 
+  // Recebiveis pendentes (entrada futura) em USD
+  let receivablesPendingUsd = 0;
+  for (const r of receivables) {
+    if (r.status === "paid") continue;
+    const remaining = r.amount_total - r.amount_received;
+    if (remaining <= 0) continue;
+    const usd = r.currency === "USD"
+      ? remaining
+      : (await convertToUsd(remaining, r.currency)).amount_usd;
+    receivablesPendingUsd += usd;
+  }
+
+  // Dividas pendentes (saida futura) em USD
+  let debtsPendingUsd = 0;
+  for (const d of debts) {
+    if (d.status === "paid") continue;
+    const remaining = d.amount_total - d.amount_paid;
+    if (remaining <= 0) continue;
+    const usd = d.currency === "USD"
+      ? remaining
+      : (await convertToUsd(remaining, d.currency)).amount_usd;
+    debtsPendingUsd += usd;
+  }
+
+  // Posicao projetada (caixa + recebiveis - dividas)
+  const projectedPosition = totalBalanceUsd + receivablesPendingUsd - debtsPendingUsd;
+
   // Mês mais recente COM DADOS (revenue > 0 ou costs > 0)
   // Se mes atual ta vazio, busca o mais recente com dados
   const currentMonthRaw = pnl12m[pnl12m.length - 1];
@@ -127,9 +154,55 @@ export default async function OverviewPage() {
           <div className="card card-body">
             <p className="text-sm text-slate-500">Runway</p>
             <p className={`text-2xl font-bold mt-1 ${runway < 2 ? "text-red-600" : "text-slate-900"}`}>
-              {runway.toFixed(1)}
+              {runway > 0 ? runway.toFixed(1) : "-"}
             </p>
             <p className="text-xs text-slate-400 mt-1">meses</p>
+          </div>
+        </div>
+
+        {/* Valores futuros: recebiveis + dividas + posicao projetada */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <a href="/admin/receivables" className="card card-body hover:shadow-md transition-shadow">
+            <p className="text-sm text-slate-500 flex items-center gap-1">
+              <span>Recebiveis</span>
+              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">a receber</span>
+            </p>
+            <p className="text-2xl font-bold text-green-600 mt-1">
+              +{formatCurrency(receivablesPendingUsd)}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              {receivables.filter((r) => r.status !== "paid").length} pendente(s)
+              {receivablesOverdue > 0 && (
+                <span className="ml-2 text-red-600">• {receivablesOverdue} atrasado(s)</span>
+              )}
+            </p>
+          </a>
+
+          <a href="/admin/debts" className="card card-body hover:shadow-md transition-shadow">
+            <p className="text-sm text-slate-500 flex items-center gap-1">
+              <span>Dividas</span>
+              <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">a pagar</span>
+            </p>
+            <p className="text-2xl font-bold text-red-600 mt-1">
+              -{formatCurrency(debtsPendingUsd)}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              {debts.filter((d) => d.status !== "paid").length} pendente(s)
+              {debtsOverdue > 0 && (
+                <span className="ml-2 text-red-600">• {debtsOverdue} atrasada(s)</span>
+              )}
+            </p>
+          </a>
+
+          <div className="card card-body bg-slate-50 border-slate-300">
+            <p className="text-sm text-slate-500 flex items-center gap-1">
+              <span>Posicao Projetada</span>
+              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">caixa + recebiveis - dividas</span>
+            </p>
+            <p className={`text-2xl font-bold mt-1 ${projectedPosition >= 0 ? "text-slate-900" : "text-red-600"}`}>
+              {formatCurrency(projectedPosition)}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">apos quitacao</p>
           </div>
         </div>
 
