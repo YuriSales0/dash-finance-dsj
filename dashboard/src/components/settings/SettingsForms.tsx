@@ -11,6 +11,7 @@ import {
   Wallet,
   Loader2,
   DollarSign,
+  Calculator,
 } from "lucide-react";
 
 interface Account {
@@ -125,6 +126,35 @@ export function SettingsForms({
     router.refresh();
   }
 
+  async function recalculateBalances() {
+    if (!confirm(
+      "Recalcular saldos baseado nas transacoes importadas?\n\n" +
+      "Isso vai SOBRESCREVER os saldos atuais com a soma das transacoes de cada conta.\n\n" +
+      "Use isso quando quiser que o saldo seja calculado automaticamente."
+    )) return;
+
+    setLoading("recalc");
+    setMsg(null);
+
+    const res = await fetch("/api/accounts/recalculate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    setLoading(null);
+    const data = await res.json();
+    if (res.ok) {
+      const summary = (data.results || [])
+        .map((r: any) => `${r.id}: ${r.new_balance.toFixed(2)} ${r.currency} (${r.transactions_count} txs)`)
+        .join(" | ");
+      setMsg(`Saldos recalculados: ${summary}`);
+      router.refresh();
+    } else {
+      setMsg(`Erro: ${data.error}`);
+    }
+  }
+
   async function updateBalance(accountId: string) {
     setLoading(`bal-${accountId}`);
     await fetch("/api/accounts", {
@@ -150,6 +180,29 @@ export function SettingsForms({
           {msg}
         </div>
       )}
+
+      {/* Acao: recalcular saldos */}
+      <div className="card card-body bg-slate-50 border-slate-200">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-semibold text-sm flex items-center gap-2">
+              <Calculator size={16} /> Recalcular saldos automaticamente
+            </p>
+            <p className="text-xs text-slate-600 mt-1">
+              Calcula o saldo de cada conta como soma das transacoes importadas. Util apos
+              importar varios extratos para ver os saldos refletidos no Overview.
+            </p>
+          </div>
+          <button
+            onClick={recalculateBalances}
+            disabled={loading === "recalc"}
+            className="btn-secondary inline-flex items-center gap-2 text-sm whitespace-nowrap"
+          >
+            {loading === "recalc" ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
+            Recalcular
+          </button>
+        </div>
+      </div>
 
       {/* Empresas existentes */}
       <div className="card">

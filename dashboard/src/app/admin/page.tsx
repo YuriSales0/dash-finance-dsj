@@ -37,17 +37,29 @@ export default async function OverviewPage() {
     }
   }
 
-  // Mês atual
-  const currentMonth = pnl12m[pnl12m.length - 1];
-  const previousMonth = pnl12m[pnl12m.length - 2];
-  const revenueGrowth = previousMonth
+  // Mês mais recente COM DADOS (revenue > 0 ou costs > 0)
+  // Se mes atual ta vazio, busca o mais recente com dados
+  const currentMonthRaw = pnl12m[pnl12m.length - 1];
+  const monthsWithData = pnl12m.filter(
+    (p) => p.revenue > 0 || p.total_costs > 0
+  );
+  const currentMonth = monthsWithData.length > 0
+    ? monthsWithData[monthsWithData.length - 1]
+    : currentMonthRaw;
+  const isShowingHistorical = currentMonth && currentMonth !== currentMonthRaw;
+
+  const currentIdx = pnl12m.findIndex((p) => p === currentMonth);
+  const previousMonth = currentIdx > 0 ? pnl12m[currentIdx - 1] : null;
+  const revenueGrowth = previousMonth && previousMonth.revenue > 0
     ? ((currentMonth.revenue - previousMonth.revenue) / previousMonth.revenue) * 100
     : 0;
 
-  // Burn rate = custos totais / 3 meses
-  const burnRate =
-    pnl12m.slice(-3).reduce((sum, p) => sum + p.total_costs, 0) / 3;
-  const runway = totalBalanceUsd / burnRate;
+  // Burn rate = custos totais medios dos meses com dados (max 3)
+  const recentWithData = monthsWithData.slice(-3);
+  const burnRate = recentWithData.length > 0
+    ? recentWithData.reduce((sum, p) => sum + p.total_costs, 0) / recentWithData.length
+    : 0;
+  const runway = burnRate > 0 ? totalBalanceUsd / burnRate : 0;
 
   // Saldos por empresa
   const balanceByEntity: Record<string, number> = {};
@@ -90,7 +102,14 @@ export default async function OverviewPage() {
             <p className="text-xs text-slate-400 mt-1">{accounts.length} contas</p>
           </div>
           <div className="card card-body">
-            <p className="text-sm text-slate-500">Receita do Mes</p>
+            <p className="text-sm text-slate-500 flex items-center gap-1">
+              Receita
+              {isShowingHistorical && currentMonth && (
+                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                  {new Date(currentMonth.month).toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}
+                </span>
+              )}
+            </p>
             <p className="text-2xl font-bold text-green-600 mt-1">
               {formatCurrency(currentMonth?.revenue || 0)}
             </p>
