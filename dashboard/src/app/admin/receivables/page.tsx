@@ -7,6 +7,8 @@ import { ReceivablesTable } from "@/components/receivables/ReceivablesTable";
 import { FileText, AlertCircle, Banknote } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export default async function ReceivablesPage() {
   const receivables = await repository.getReceivables();

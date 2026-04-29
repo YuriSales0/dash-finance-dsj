@@ -8,6 +8,8 @@ import { convertToUsd } from "@/lib/fx/rates";
 import { AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export default async function OverviewPage() {
   const [accounts, pnl12m, transactions, receivables, debts] = await Promise.all([
