@@ -10,45 +10,63 @@ export function getApiBase(sandbox: boolean): string {
 
 // Aceita PKCS#1 (BEGIN RSA PRIVATE KEY) ou PKCS#8 (BEGIN PRIVATE KEY)
 // e retorna sempre em PKCS#8 (que jose requer)
-// Normalizacao robusta: extrai body, remove qualquer caractere fora do base64,
-// e reconstroi PEM com line breaks corretas (64 chars por linha)
+// Robusto: aceita ate chave sem markers se body for base64 valido
 export function normalizePrivateKey(pem: string): string {
-  // Normalizar dashes unicode comuns (em-dash, en-dash, etc)
   let normalized = pem
     .replace(/[‐‑‒–—―−]/g, "-")
-    .replace(/ /g, " "); // nbsp -> space
+    .replace(/ /g, " ");
 
-  // Tentar extrair os marcadores BEGIN/END
+  let keyType: string;
+  let body: string;
+
   const match = normalized.match(
     /-----\s*BEGIN\s+(RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----([\s\S]*?)-----\s*END\s+(?:RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----/i
   );
 
-  if (!match) {
-    throw new Error(
-      "PEM_MARKERS_NOT_FOUND: Nao encontrei -----BEGIN...-----. " +
-        "Inicio recebido: " +
-        JSON.stringify(normalized.slice(0, 50))
-    );
+  if (match) {
+    keyType = match[1].replace(/\s+/g, " ").toUpperCase();
+    body = match[2].replace(/[^A-Za-z0-9+/=]/g, "");
+  } else {
+    // FALLBACK: se markers sumiram (DB stripping?), e o conteudo eh base64,
+    // assumir PKCS#8 (mais comum) e tentar reconstruir
+    const cleaned = normalized.replace(/[^A-Za-z0-9+/=]/g, "");
+    if (cleaned.length >= 600 && /^[A-Za-z0-9+/=]+$/.test(cleaned)) {
+      keyType = "PRIVATE KEY";
+      body = cleaned;
+    } else {
+      throw new Error(
+        "PEM_MARKERS_NOT_FOUND: Nao encontrei -----BEGIN...-----. " +
+          "Inicio recebido: " +
+          JSON.stringify(normalized.slice(0, 50))
+      );
+    }
   }
-
-  const keyType = match[1].replace(/\s+/g, " ").toUpperCase();
-  const body = match[2].replace(/[^A-Za-z0-9+/=]/g, "");
 
   if (body.length < 100) {
     throw new Error(`PEM_BODY_TOO_SHORT: corpo tem ${body.length} chars (minimo ~600)`);
   }
 
   const lines = body.match(/.{1,64}/g)!.join("\n");
-  const reconstructed = `-----BEGIN ${keyType}-----\n${lines}\n-----END ${keyType}-----\n`;
 
-  try {
-    const keyObject = createPrivateKey({ key: reconstructed, format: "pem" });
-    return keyObject.export({ format: "pem", type: "pkcs8" }) as string;
-  } catch (err: any) {
-    throw new Error(
-      `KEY_DECODE_FAILED: ${err.message}. KeyType: ${keyType}, BodyLen: ${body.length}`
-    );
+  // Tentar PKCS#8 primeiro
+  const tryParse = (kt: string) => {
+    const reconstructed = `-----BEGIN ${kt}-----\n${lines}\n-----END ${kt}-----\n`;
+    return createPrivateKey({ key: reconstructed, format: "pem" });
+  };
+
+  let lastError: any;
+  for (const kt of [keyType, "PRIVATE KEY", "RSA PRIVATE KEY"]) {
+    try {
+      const keyObject = tryParse(kt);
+      return keyObject.export({ format: "pem", type: "pkcs8" }) as string;
+    } catch (err: any) {
+      lastError = err;
+    }
   }
+
+  throw new Error(
+    `KEY_DECODE_FAILED: ${lastError?.message}. KeyType: ${keyType}, BodyLen: ${body.length}`
+  );
 }
 
 // URL para o usuario autorizar o app no Revolut

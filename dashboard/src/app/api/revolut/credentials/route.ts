@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { refreshAccessToken } from "@/lib/revolut/auth";
+import { refreshAccessToken, normalizePrivateKey } from "@/lib/revolut/auth";
 
 // Salvar credenciais Revolut
 // Modo "draft": cert + client_id (sem refresh_token) - para autorizar via OAuth
@@ -26,6 +26,28 @@ export async function POST(request: Request) {
 
     const sb = createServerClient();
 
+    // Normalizar a private_key ANTES de salvar para evitar problemas de formato no DB
+    let normalizedKey: string;
+    try {
+      normalizedKey = normalizePrivateKey(private_key);
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: `Chave privada invalida: ${err.message}` },
+        { status: 400 }
+      );
+    }
+
+    console.log("Saving Revolut credentials:", {
+      bank_account_id,
+      client_id_len: client_id.length,
+      input_key_len: private_key.length,
+      input_key_first_30: private_key.slice(0, 30),
+      normalized_key_len: normalizedKey.length,
+      normalized_key_first_30: normalizedKey.slice(0, 30),
+      issuer,
+      sandbox,
+    });
+
     // Se tem refresh_token, validar
     let access_token: string | null = null;
     let access_token_expires_at: string | null = null;
@@ -35,7 +57,7 @@ export async function POST(request: Request) {
         const tokenData = await refreshAccessToken({
           client_id,
           issuer,
-          private_key,
+          private_key: normalizedKey,
           refresh_token,
           sandbox,
         });
@@ -54,7 +76,7 @@ export async function POST(request: Request) {
         bank_account_id,
         client_id,
         issuer,
-        private_key,
+        private_key: normalizedKey,
         refresh_token: refresh_token || null,
         access_token,
         access_token_expires_at,
