@@ -62,6 +62,26 @@ export async function GET() {
     .order("month", { ascending: false })
     .limit(6);
 
+  // Recebiveis
+  const { count: receivablesCount } = await sb
+    .from("receivables")
+    .select("*", { count: "exact", head: true });
+  const { data: recentReceivables } = await sb
+    .from("receivables")
+    .select("id, entity_id, description, counterparty, amount_total, currency, status, due_date, created_at")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  // Dividas
+  const { count: debtsCount } = await sb
+    .from("debts")
+    .select("*", { count: "exact", head: true });
+  const { data: recentDebts } = await sb
+    .from("debts")
+    .select("id, entity_id, description, creditor, amount_total, currency, status, due_date, created_at")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
   return NextResponse.json({
     total_transactions: totalCount,
     needs_review: needsReviewCount,
@@ -69,5 +89,9 @@ export async function GET() {
     recent_transactions: recent,
     recent_imports: imports,
     consolidated_pnl_recent: pnl,
+    total_receivables: receivablesCount,
+    recent_receivables: recentReceivables,
+    total_debts: debtsCount,
+    recent_debts: recentDebts,
   });
 }
