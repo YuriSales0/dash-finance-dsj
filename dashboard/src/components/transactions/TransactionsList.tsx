@@ -5,7 +5,7 @@ import type { Transaction, BankAccount, EntityId } from "@/types/database";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
-import { Search, AlertCircle, ArrowRightLeft, Calendar } from "lucide-react";
+import { Search, AlertCircle, ArrowRightLeft, Calendar, Wand2, Loader2 } from "lucide-react";
 
 interface Props {
   transactions: Transaction[];
@@ -50,6 +50,7 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
   const [editCategory, setEditCategory] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [marking, setMarking] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const accountMap = useMemo(() => {
     return Object.fromEntries(accounts.map((a) => [a.id, a]));
@@ -267,8 +268,20 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
           <span className="text-xs text-slate-500 ml-auto">
             <strong>{filtered.length}</strong> resultado(s)
           </span>
+          <button
+            onClick={() => setBulkOpen(true)}
+            className="btn-secondary text-xs inline-flex items-center gap-1"
+            title="Classificar varias de uma vez por conta"
+          >
+            <Wand2 size={12} />
+            Classificar em massa
+          </button>
         </div>
       </div>
+
+      {bulkOpen && (
+        <BulkClassifyModal accounts={accounts} onClose={() => setBulkOpen(false)} />
+      )}
 
       {/* Barra de acoes em lote */}
       {selectedIds.size > 0 && (
@@ -487,3 +500,131 @@ export function TransactionsList({ transactions, accounts, entities = [] }: Prop
     </div>
   );
 }
+
+
+function BulkClassifyModal({ accounts, onClose }: { accounts: BankAccount[]; onClose: () => void }) {
+  const [accountId, setAccountId] = useState(accounts[0]?.id || "");
+  const [inflowCat, setInflowCat] = useState("revenue_other");
+  const [outflowCat, setOutflowCat] = useState("");
+  const [onlyUncategorized, setOnlyUncategorized] = useState(true);
+  const [excludeIntercompany, setExcludeIntercompany] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function apply() {
+    if (!accountId) return;
+    if (!inflowCat && !outflowCat) {
+      setError("Selecione pelo menos uma categoria");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    const res = await fetch("/api/transactions/bulk-classify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bank_account_id: accountId,
+        inflow_category: inflowCat || null,
+        outflow_category: outflowCat || null,
+        only_uncategorized: onlyUncategorized,
+        exclude_intercompany: excludeIntercompany,
+      }),
+    });
+
+    setLoading(false);
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Erro");
+      return;
+    }
+    setResult(data);
+  }
+
+  const acc = accounts.find((a) => a.id === accountId);
+
+  return (
+    <Modal open onClose={onClose} title="Classificar em massa">
+      <div className="space-y-4">
+        <div className="text-sm text-slate-600">
+          Define uma regra automatica: todas transacoes <strong>positivas</strong> da conta viram receita, todas <strong>negativas</strong> viram custo.
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-slate-700 mb-1">Conta</label>
+          <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {entityNames[a.entity_id] || a.entity_id} - {a.bank_name} ({a.currency})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Entradas (positivos) <span className="text-green-600">+</span>
+            </label>
+            <select className="input" value={inflowCat} onChange={(e) => setInflowCat(e.target.value)}>
+              <option value="">Nao alterar</option>
+              <option value="revenue_shopify">Vendas Shopify</option>
+              <option value="revenue_other">Outras receitas</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Saidas (negativos) <span className="text-red-600">-</span>
+            </label>
+            <select className="input" value={outflowCat} onChange={(e) => setOutflowCat(e.target.value)}>
+              <option value="">Nao alterar</option>
+              <option value="cost_ads_meta">Meta Ads</option>
+              <option value="cost_ads_tiktok">TikTok Ads</option>
+              <option value="cost_ads_google">Google Ads</option>
+              <option value="cost_products">Produtos</option>
+              <option value="cost_shipping">Frete</option>
+              <option value="cost_gateway">Gateway</option>
+              <option value="cost_team">Team</option>
+              <option value="cost_saas">SaaS</option>
+              <option value="cost_office">Outros / escritorio</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={onlyUncategorized} onChange={(e) => setOnlyUncategorized(e.target.checked)} />
+            Apenas transacoes sem categoria ou pendentes
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={excludeIntercompany} onChange={(e) => setExcludeIntercompany(e.target.checked)} />
+            Excluir intercompany
+          </label>
+        </div>
+
+        {error && <div className="bg-red-50 text-red-700 p-2 rounded text-xs">{error}</div>}
+
+        {result && (
+          <div className="bg-green-50 text-green-800 p-3 rounded text-sm space-y-1">
+            <p className="font-semibold">Aplicado!</p>
+            <p>{result.applied_inflow} entradas + {result.applied_outflow} saidas = <strong>{result.total_classified}</strong> transacoes</p>
+            <p className="text-xs">{result.months_regenerated?.length || 0} meses de P&L regenerados</p>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary">{result ? "Fechar" : "Cancelar"}</button>
+          {!result && (
+            <button onClick={apply} disabled={loading} className="btn-primary inline-flex items-center gap-2">
+              {loading && <Loader2 size={14} className="animate-spin" />}
+              Aplicar
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
