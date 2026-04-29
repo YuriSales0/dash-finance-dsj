@@ -7,6 +7,28 @@ export function getApiBase(sandbox: boolean): string {
   return sandbox ? REVOLUT_SANDBOX_URL : REVOLUT_PROD_URL;
 }
 
+// URL para o usuario autorizar o app no Revolut
+export function buildAuthorizationUrl(params: {
+  client_id: string;
+  redirect_uri: string;
+  state: string;
+  sandbox: boolean;
+}): string {
+  const base = params.sandbox
+    ? "https://sandbox-business.revolut.com/app-confirm"
+    : "https://business.revolut.com/app-confirm";
+
+  const qs = new URLSearchParams({
+    client_id: params.client_id,
+    redirect_uri: params.redirect_uri,
+    response_type: "code",
+    scope: "READ",
+    state: params.state,
+  });
+
+  return `${base}?${qs.toString()}`;
+}
+
 // Assina JWT client_assertion para autenticacao Revolut
 async function signClientAssertion(
   clientId: string,
