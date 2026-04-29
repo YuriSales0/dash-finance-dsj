@@ -1,6 +1,7 @@
 import { Header } from "@/components/layout/Header";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency } from "@/lib/format";
+import { convertToUsd } from "@/lib/fx/rates";
 import { ReceivableForm } from "@/components/receivables/ReceivableForm";
 import { ReceivablesTable } from "@/components/receivables/ReceivablesTable";
 import { FileText, AlertCircle, Banknote } from "lucide-react";
@@ -10,9 +11,18 @@ export const dynamic = "force-dynamic";
 export default async function ReceivablesPage() {
   const receivables = await repository.getReceivables();
 
-  const totalPending = receivables
-    .filter((r) => r.status === "pending" || r.status === "partial")
-    .reduce((s, r) => s + (r.amount_total - r.amount_received), 0);
+  // Total a receber convertido para USD
+  let totalPendingUsd = 0;
+  for (const r of receivables) {
+    if (r.status !== "pending" && r.status !== "partial") continue;
+    const remaining = r.amount_total - r.amount_received;
+    if (remaining <= 0) continue;
+    const usd = r.currency === "USD"
+      ? remaining
+      : (await convertToUsd(remaining, r.currency)).amount_usd;
+    totalPendingUsd += usd;
+  }
+
   const overdueCount = receivables.filter(
     (r) => r.status !== "paid" && new Date(r.due_date) < new Date()
   ).length;
@@ -30,8 +40,9 @@ export default async function ReceivablesPage() {
             <div className="flex items-center gap-3">
               <div className="p-2 bg-green-50 rounded-lg"><FileText className="text-green-600" size={20} /></div>
               <div>
-                <p className="text-xs text-slate-500">A receber</p>
-                <p className="text-xl font-bold">{formatCurrency(totalPending)}</p>
+                <p className="text-xs text-slate-500">A receber (USD)</p>
+                <p className="text-xl font-bold">{formatCurrency(totalPendingUsd)}</p>
+                <p className="text-[10px] text-slate-400">convertido pela cotacao do dia</p>
               </div>
             </div>
           </div>
