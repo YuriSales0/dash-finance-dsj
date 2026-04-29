@@ -15,8 +15,10 @@ interface ReceivableOption {
 
 export function InviteGenerator({
   receivables,
+  disabled,
 }: {
   receivables: ReceivableOption[];
+  disabled?: boolean;
 }) {
   const [receivableId, setReceivableId] = useState(receivables[0]?.id?.toString() || "");
   const [name, setName] = useState("");
@@ -144,11 +146,11 @@ export function InviteGenerator({
             <div className="md:col-span-2">
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || disabled}
                 className="btn-primary inline-flex items-center gap-2"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
-                Gerar link de convite
+                {disabled ? "Configure o contrato primeiro" : "Gerar link de convite"}
               </button>
             </div>
           </div>

@@ -12,6 +12,7 @@ export default function ContractPage() {
   const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [product, setProduct] = useState<any>(null);
+  const [contractTemplate, setContractTemplate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
@@ -19,6 +20,10 @@ export default function ContractPage() {
     fetch(`/api/invites/product?code=${code}`)
       .then((r) => r.json())
       .then((data) => setProduct(data))
+      .catch(() => {});
+    fetch("/api/settings?key=contract_template")
+      .then((r) => r.json())
+      .then((d) => setContractTemplate(d.value || ""))
       .catch(() => {});
   }, [code]);
 
@@ -127,15 +132,30 @@ export default function ContractPage() {
         <div className="card">
           <div className="card-header"><h3 className="font-semibold">Termos do contrato</h3></div>
           <div className="card-body">
-            <div className="bg-slate-50 rounded-lg p-4 max-h-64 overflow-y-auto text-xs text-slate-700 leading-relaxed space-y-3">
-              <p><strong>CONTRATO DE SOCIEDADE EM CONTA DE PARTICIPACAO (SCP)</strong></p>
-              <p>Pelo presente instrumento particular, de um lado como <strong>SOCIO OSTENSIVO</strong>, DSJ Network LLC, sociedade limitada com sede na Florida, USA, e de outro lado como <strong>SOCIO PARTICIPANTE</strong>, o investidor identificado no cadastro desta plataforma;</p>
-              <p><strong>CLAUSULA 1 - OBJETO:</strong> O Socio Participante aporta capital para antecipacao de recebiveis de operacoes de e-commerce ja validadas e capturadas pelo Socio Ostensivo.</p>
-              <p><strong>CLAUSULA 2 - VALOR E RETORNO:</strong> O valor investido e a taxa de retorno sao os informados na tela de confirmacao. O prazo para pagamento do retorno e contado a partir da data de confirmacao do aporte.</p>
-              <p><strong>CLAUSULA 3 - RISCOS:</strong> O investimento possui risco de credito associado ao recebivel subjacente. Em caso de inadimplencia do devedor do recebivel, o retorno pode ser inferior ao estimado. O Socio Ostensivo empregara seus melhores esforcos para a realizacao do recebivel.</p>
-              <p><strong>CLAUSULA 4 - PAGAMENTO:</strong> O retorno sera pago via transferencia bancaria (PIX ou TED) para a conta indicada no cadastro do investidor, nas datas previstas no cronograma de pagamento.</p>
-              <p><strong>CLAUSULA 5 - CONFIDENCIALIDADE:</strong> As partes se comprometem a manter em sigilo todas as informacoes relativas a esta operacao e aos dados financeiros disponibilizados na plataforma.</p>
-              <p><strong>CLAUSULA 6 - FORO:</strong> Fica eleito o foro da Comarca de Miami-Dade, Florida, USA, para dirimir quaisquer controversias.</p>
+            <div className="bg-slate-50 rounded-lg p-4 max-h-64 overflow-y-auto text-xs text-slate-700 leading-relaxed space-y-2">
+              {contractTemplate ? (
+                contractTemplate
+                  .replace(/\{\{amount\}\}/g, numAmount > 0 ? formatCurrency(numAmount, currency) : "[valor]")
+                  .replace(/\{\{interest_rate\}\}/g, String(rate))
+                  .replace(/\{\{redemption_days\}\}/g, String(days))
+                  .replace(/\{\{expected_return\}\}/g, numAmount > 0 ? formatCurrency(expectedReturn, currency) : "[retorno]")
+                  .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("pt-BR"))
+                  .replace(/\{\{investor_name\}\}/g, "[seu nome]")
+                  .replace(/\{\{investor_cpf\}\}/g, "[seu CPF]")
+                  .replace(/\{\{contract_hash\}\}/g, "[gerado na assinatura]")
+                  .split("\n")
+                  .map((line, i) => {
+                    if (!line.trim()) return <br key={i} />;
+                    if (line.startsWith("##")) return <p key={i} className="font-bold mt-3 mb-1">{line.replace(/^#+\s*/, "")}</p>;
+                    const html = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                    return <p key={i} dangerouslySetInnerHTML={{ __html: html }} />;
+                  })
+              ) : (
+                <div className="text-center py-8 text-slate-400">
+                  <p className="font-semibold">Contrato em preparacao</p>
+                  <p className="mt-1">O contrato esta sendo finalizado pela equipe juridica. Tente novamente em breve.</p>
+                </div>
+              )}
             </div>
 
             <label className="flex items-start gap-3 mt-4 cursor-pointer">
@@ -162,7 +182,7 @@ export default function ContractPage() {
 
         <button
           onClick={handleSign}
-          disabled={!accepted || numAmount <= 0 || loading}
+          disabled={!accepted || numAmount <= 0 || loading || !contractTemplate}
           className="btn-primary w-full py-3 text-lg inline-flex items-center justify-center gap-2"
         >
           {loading && <Loader2 size={18} className="animate-spin" />}
