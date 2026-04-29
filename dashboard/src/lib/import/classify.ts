@@ -79,6 +79,41 @@ const CATEGORY_LIST = [
   "transfer_fx (cambio)",
 ];
 
+// Holder pra ultimo erro do Claude (acessivel via getLastClaudeError)
+let lastClaudeError: { status?: number; body?: string; message?: string; ts?: string } | null = null;
+
+export function getLastClaudeError() {
+  return lastClaudeError;
+}
+
+const PRIMARY_MODEL = "claude-haiku-4-5-20251001";
+const FALLBACK_MODEL = "claude-3-5-haiku-20241022";
+
+async function callClaudeAPI(apiKey: string, prompt: string, model: string): Promise<{ ok: boolean; text?: string; status?: number; body?: string }> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    return { ok: false, status: res.status, body };
+  }
+
+  const data = await res.json();
+  const text = data.content?.[0]?.text as string;
+  return { ok: true, text };
+}
+
 export async function classifyByAI(
   tx: NormalizedTransaction,
   entityName: string,
@@ -115,25 +150,34 @@ REGRAS:
 - Na duvida entre receita e custo: escolha o mais conservador (custo)`;
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 200,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+    // Tenta com modelo primario
+    let result = await callClaudeAPI(apiKey, prompt, PRIMARY_MODEL);
 
-    if (!res.ok) throw new Error(`AI ${res.status}`);
-    const data = await res.json();
-    const text = data.content[0].text as string;
+    // Se falhar com 404 (modelo nao encontrado) ou 400 (model inválido), tenta fallback
+    if (!result.ok && (result.status === 404 || result.status === 400)) {
+      result = await callClaudeAPI(apiKey, prompt, FALLBACK_MODEL);
+    }
+
+    if (!result.ok) {
+      lastClaudeError = {
+        status: result.status,
+        body: result.body?.slice(0, 500),
+        message: `Claude API ${result.status}`,
+        ts: new Date().toISOString(),
+      };
+      throw new Error(`Claude API ${result.status}: ${result.body?.slice(0, 200)}`);
+    }
+
+    const text = result.text || "";
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("JSON nao encontrado");
+    if (!match) {
+      lastClaudeError = {
+        message: "JSON nao encontrado na resposta",
+        body: text.slice(0, 500),
+        ts: new Date().toISOString(),
+      };
+      throw new Error("JSON nao encontrado");
+    }
     const parsed = JSON.parse(match[0]);
 
     const confidence = Number(parsed.confidence) || 0;
@@ -143,7 +187,13 @@ REGRAS:
       confidence,
       needs_review: confidence < 70,
     };
-  } catch (err) {
+  } catch (err: any) {
+    if (!lastClaudeError || lastClaudeError.message !== err.message) {
+      lastClaudeError = {
+        message: err.message,
+        ts: new Date().toISOString(),
+      };
+    }
     return {
       category_id: null,
       classified_by: null,

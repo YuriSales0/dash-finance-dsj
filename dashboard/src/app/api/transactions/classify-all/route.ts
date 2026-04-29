@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isDemoMode } from "@/lib/data/repository";
-import { classify } from "@/lib/import/classify";
+import { classify, getLastClaudeError } from "@/lib/import/classify";
 import { getAnthropicKey } from "@/lib/anthropic/key";
 
 export const maxDuration = 60;
@@ -131,6 +131,9 @@ export async function POST(request: Request) {
     .or("category_id.is.null,needs_review.eq.true")
     .eq("is_intercompany", false);
 
+  // Pegar ultimo erro do Claude (caso tenha falhado)
+  const lastErr = getLastClaudeError();
+
   return NextResponse.json({
     ok: true,
     processed: transactions.length,
@@ -139,5 +142,6 @@ export async function POST(request: Request) {
     errors,
     remaining: remaining || 0,
     months_regenerated: monthsRegenerated.length,
+    last_claude_error: lastErr,
   });
 }

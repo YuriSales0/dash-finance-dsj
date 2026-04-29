@@ -35,6 +35,7 @@ export function AnthropicEditor() {
     classified: number;
     remaining: number;
     rounds: number;
+    last_error?: any;
   } | null>(null);
 
   async function load() {
@@ -127,6 +128,7 @@ export function AnthropicEditor() {
           classified: totalClassified,
           remaining: data.remaining || 0,
           rounds,
+          last_error: data.last_claude_error,
         });
         // Para se nao processou nada ou nao tem mais
         if (data.processed === 0 || data.remaining === 0) break;
@@ -201,11 +203,23 @@ export function AnthropicEditor() {
               <p className="font-semibold text-green-900 flex items-center gap-2">
                 <CheckCircle2 size={14} /> Conexao OK!
               </p>
-              <p className="text-green-800">Modelo: <code>{testResult.model}</code></p>
+              <p className="text-green-800">Modelos com acesso: <code>{(testResult.working_models || []).join(", ") || testResult.model}</code></p>
               <p className="text-green-800">
                 Tokens: input {testResult.usage?.input_tokens} • output {testResult.usage?.output_tokens}
               </p>
               <p className="text-green-700 italic mt-2">"{testResult.sample_response}"</p>
+              {testResult.all_results && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer">Detalhes dos testes</summary>
+                  <pre className="bg-white/50 p-2 rounded mt-1 overflow-x-auto text-[10px]">{JSON.stringify(testResult.all_results, null, 2)}</pre>
+                </details>
+              )}
+            </div>
+          )}
+          {testResult?.ok === false && testResult?.all_results && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs space-y-1">
+              <p className="font-semibold text-red-900">Nenhum modelo respondeu</p>
+              <pre className="text-red-700 mt-1 overflow-x-auto text-[10px]">{JSON.stringify(testResult.all_results, null, 2)}</pre>
             </div>
           )}
 
@@ -318,6 +332,23 @@ export function AnthropicEditor() {
                   <p>{classifyProgress.remaining} ainda precisam de revisao manual (Claude tinha confianca baixa)</p>
                 ) : (
                   <p>Tudo categorizado!</p>
+                )}
+              </div>
+            )}
+
+            {classifyProgress?.last_error && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs space-y-1">
+                <p className="font-semibold text-amber-900">Ultimo erro do Claude (debug):</p>
+                <pre className="text-amber-800 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(classifyProgress.last_error, null, 2)}</pre>
+              </div>
+            )}
+
+            {classifyProgress && !classifying && classifyProgress.classified === 0 && classifyProgress.remaining > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 space-y-1">
+                <p className="font-semibold">Nenhuma transacao foi classificada</p>
+                <p>{classifyProgress.remaining} transacoes pendentes mas Claude nao classificou nenhuma. Provavel erro na API.</p>
+                {classifyProgress.last_error && (
+                  <pre className="bg-white/50 p-2 rounded overflow-x-auto whitespace-pre-wrap mt-2">{JSON.stringify(classifyProgress.last_error, null, 2)}</pre>
                 )}
               </div>
             )}
