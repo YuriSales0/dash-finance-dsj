@@ -9,6 +9,7 @@ import {
 } from "@/lib/import/normalize";
 import { classify } from "@/lib/import/classify";
 import { createServerClient } from "@/lib/supabase/server";
+import { convertToUsd } from "@/lib/fx/rates";
 import type { EntityId } from "@/types/database";
 
 export const maxDuration = 60;
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
       bank_account_id,
       entity_id,
       fx_rate,
+      currency_override,
       format_override,
       preview_only,
     }: {
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
       bank_account_id: string;
       entity_id: EntityId;
       fx_rate?: number;
+      currency_override?: string;
       format_override?: "revolut" | "mercury" | "generic";
       preview_only?: boolean;
     } = body;
@@ -52,7 +55,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const rate = fx_rate || 1.27;
+    // Se fx_rate nao foi fornecido e moeda nao e USD, buscar automaticamente
+    let rate = fx_rate || 1;
+    const csvCurrency = currency_override || "USD";
+    if (!fx_rate && csvCurrency !== "USD") {
+      const live = await convertToUsd(1, csvCurrency);
+      rate = live.fx_rate;
+    }
+
     let normalized: NormalizedTransaction[] = [];
     if (fmt === "revolut") {
       normalized = normalizeRevolut(rows, bank_account_id, entity_id, rate);
@@ -60,6 +70,16 @@ export async function POST(request: Request) {
       normalized = normalizeMercury(rows, bank_account_id, entity_id);
     } else {
       normalized = normalizeGeneric(rows, bank_account_id, entity_id, rate);
+    }
+
+    // Sobrescrever moeda se override foi passado
+    if (csvCurrency !== "USD") {
+      normalized = normalized.map((t) => ({
+        ...t,
+        currency_original: csvCurrency,
+        fx_rate: rate,
+        amount_usd: Math.round(t.amount_original * rate * 100) / 100,
+      }));
     }
 
     const sb = createServerClient();

@@ -3,7 +3,7 @@ import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, formatPercent, entityColors, entityNames } from "@/lib/format";
-import { MOCK_FX_GBP_USD } from "@/lib/data/mock";
+import { convertToUsd } from "@/lib/fx/rates";
 import { AlertTriangle } from "lucide-react";
 
 export default async function OverviewPage() {
@@ -13,11 +13,16 @@ export default async function OverviewPage() {
     repository.getTransactions({ needs_review: true, limit: 100 }),
   ]);
 
-  // Saldo total em USD (converte GBP)
-  const totalBalanceUsd = accounts.reduce((sum, acc) => {
-    const usd = acc.currency === "GBP" ? acc.balance_current * MOCK_FX_GBP_USD : acc.balance_current;
-    return sum + usd;
-  }, 0);
+  // Saldo total em USD (converte GBP/EUR/BRL com cotacao do dia)
+  let totalBalanceUsd = 0;
+  for (const acc of accounts) {
+    if (acc.currency === "USD") {
+      totalBalanceUsd += acc.balance_current;
+    } else {
+      const converted = await convertToUsd(acc.balance_current, acc.currency);
+      totalBalanceUsd += converted.amount_usd;
+    }
+  }
 
   // Mês atual
   const currentMonth = pnl12m[pnl12m.length - 1];
@@ -32,14 +37,13 @@ export default async function OverviewPage() {
   const runway = totalBalanceUsd / burnRate;
 
   // Saldos por empresa
-  const balanceByEntity = accounts.reduce(
-    (acc, a) => {
-      const usd = a.currency === "GBP" ? a.balance_current * MOCK_FX_GBP_USD : a.balance_current;
-      acc[a.entity_id] = (acc[a.entity_id] || 0) + usd;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+  const balanceByEntity: Record<string, number> = {};
+  for (const a of accounts) {
+    const usd = a.currency === "USD"
+      ? a.balance_current
+      : (await convertToUsd(a.balance_current, a.currency)).amount_usd;
+    balanceByEntity[a.entity_id] = (balanceByEntity[a.entity_id] || 0) + usd;
+  }
 
   return (
     <>

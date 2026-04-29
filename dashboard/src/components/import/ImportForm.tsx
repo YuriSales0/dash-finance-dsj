@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, FileText, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Upload, Loader2, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 
 interface BankAccountOption {
@@ -38,10 +38,25 @@ interface ImportResult {
   needs_review: number;
 }
 
+interface FxRates {
+  rates: Record<string, number>;
+  display: string;
+}
+
+const CURRENCIES = [
+  { code: "USD", label: "USD — Dolar americano", symbol: "$" },
+  { code: "GBP", label: "GBP — Libra esterlina", symbol: "£" },
+  { code: "EUR", label: "EUR — Euro", symbol: "€" },
+  { code: "BRL", label: "BRL — Real brasileiro", symbol: "R$" },
+];
+
 export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
   const router = useRouter();
   const [bankId, setBankId] = useState(accounts[0]?.id || "");
-  const [fxRate, setFxRate] = useState("1.27");
+  const [currency, setCurrency] = useState("USD");
+  const [fxRate, setFxRate] = useState("1");
+  const [fxRates, setFxRates] = useState<FxRates | null>(null);
+  const [fxLoading, setFxLoading] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -50,6 +65,43 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
   const [error, setError] = useState<string | null>(null);
 
   const selectedAccount = accounts.find((a) => a.id === bankId);
+
+  // Buscar cotacoes automaticamente ao carregar
+  useEffect(() => {
+    fetchRates();
+  }, []);
+
+  // Quando muda moeda, atualizar taxa
+  useEffect(() => {
+    if (!fxRates) return;
+    if (currency === "USD") {
+      setFxRate("1");
+    } else {
+      const rate = fxRates.rates[currency];
+      if (rate) {
+        setFxRate((1 / rate).toFixed(6));
+      }
+    }
+  }, [currency, fxRates]);
+
+  // Auto-detectar moeda pela conta selecionada
+  useEffect(() => {
+    if (selectedAccount) {
+      setCurrency(selectedAccount.currency);
+    }
+  }, [bankId, selectedAccount]);
+
+  async function fetchRates() {
+    setFxLoading(true);
+    try {
+      const res = await fetch("/api/fx");
+      const data = await res.json();
+      setFxRates(data);
+    } catch {
+      // fallback silencioso
+    }
+    setFxLoading(false);
+  }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -79,6 +131,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
         bank_account_id: bankId,
         entity_id: selectedAccount.entity_id,
         fx_rate: Number(fxRate),
+        currency_override: currency,
         preview_only: true,
       }),
     });
@@ -105,6 +158,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
         bank_account_id: bankId,
         entity_id: selectedAccount.entity_id,
         fx_rate: Number(fxRate),
+        currency_override: currency,
         preview_only: false,
       }),
     });
@@ -124,9 +178,48 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
 
   return (
     <div className="space-y-6">
+      {/* Cotação em tempo real */}
       <div className="card">
-        <div className="card-header"><h3 className="font-semibold">1. Configurar conta</h3></div>
-        <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="card-header flex items-center justify-between">
+          <h3 className="font-semibold">Cotacao do dia</h3>
+          <button
+            onClick={fetchRates}
+            disabled={fxLoading}
+            className="text-xs text-brand-600 hover:text-brand-700 inline-flex items-center gap-1"
+          >
+            <RefreshCw size={12} className={fxLoading ? "animate-spin" : ""} />
+            Atualizar
+          </button>
+        </div>
+        <div className="card-body">
+          {fxRates ? (
+            <div className="flex flex-wrap gap-4 text-sm">
+              {Object.entries(fxRates.rates)
+                .filter(([k]) => k !== "USD")
+                .map(([code, rate]) => {
+                  const toUsd = (1 / rate).toFixed(4);
+                  return (
+                    <div key={code} className="bg-slate-50 px-4 py-2 rounded-lg">
+                      <span className="font-mono font-semibold">1 {code}</span>
+                      <span className="text-slate-500"> = </span>
+                      <span className="font-mono font-semibold text-green-700">{toUsd} USD</span>
+                    </div>
+                  );
+                })}
+              <div className="text-xs text-slate-400 self-center">
+                Fonte: BCE (Banco Central Europeu)
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">Carregando cotacoes...</p>
+          )}
+        </div>
+      </div>
+
+      {/* Config */}
+      <div className="card">
+        <div className="card-header"><h3 className="font-semibold">1. Configurar conta e moeda</h3></div>
+        <div className="card-body grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">Conta bancaria</label>
             <select className="input" value={bankId} onChange={(e) => setBankId(e.target.value)}>
@@ -138,24 +231,58 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              Taxa GBP/USD (so para contas em GBP)
-            </label>
-            <input
-              type="number"
-              step="0.0001"
+            <label className="block text-xs font-medium text-slate-700 mb-1">Moeda do CSV</label>
+            <select
               className="input"
-              value={fxRate}
-              onChange={(e) => setFxRate(e.target.value)}
-              disabled={selectedAccount?.currency !== "GBP"}
-            />
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
             <p className="text-xs text-slate-500 mt-1">
-              {selectedAccount?.currency === "GBP" ? "Necessario para converter para USD" : "Nao aplicavel"}
+              {currency === "USD"
+                ? "Sem conversao necessaria"
+                : `Sera convertido para USD com a taxa abaixo`}
             </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Taxa {currency} → USD
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.000001"
+                className="input flex-1"
+                value={fxRate}
+                onChange={(e) => setFxRate(e.target.value)}
+                disabled={currency === "USD"}
+              />
+              {currency !== "USD" && fxRates && (
+                <button
+                  onClick={() => {
+                    const r = fxRates.rates[currency];
+                    if (r) setFxRate((1 / r).toFixed(6));
+                  }}
+                  className="btn-secondary text-xs whitespace-nowrap"
+                  title="Usar cotacao do dia"
+                >
+                  Usar ECB
+                </button>
+              )}
+            </div>
+            {currency !== "USD" && (
+              <p className="text-xs text-slate-500 mt-1">
+                1 {currency} = {Number(fxRate).toFixed(4)} USD
+              </p>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Upload */}
       <div className="card">
         <div className="card-header"><h3 className="font-semibold">2. Upload do CSV</h3></div>
         <div className="card-body">
@@ -167,7 +294,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
                 {fileName || "Clique ou arraste o CSV"}
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                Suporta: Revolut Business export, Mercury, ou CSV generico
+                Suporta: Revolut Business, Mercury, ou CSV generico
               </p>
             </div>
           </label>
@@ -185,6 +312,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
         </div>
       </div>
 
+      {/* Erro */}
       {error && (
         <div className="card card-body bg-red-50 border-red-200">
           <div className="flex items-start gap-3">
@@ -197,16 +325,24 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
         </div>
       )}
 
+      {/* Preview */}
       {preview && (
         <div className="card">
           <div className="card-header"><h3 className="font-semibold">3. Preview</h3></div>
           <div className="card-body space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <Stat label="Formato" value={preview.format.toUpperCase()} />
               <Stat label="Linhas no CSV" value={String(preview.total_rows)} />
               <Stat label="Para importar" value={String(preview.new_transactions)} highlight />
               <Stat label="Duplicadas" value={String(preview.skipped_duplicates)} />
+              <Stat label="Moeda" value={currency} />
             </div>
+
+            {currency !== "USD" && (
+              <div className="bg-amber-50 px-4 py-2 rounded-lg text-xs text-amber-800">
+                Conversao: 1 {currency} = <strong>{Number(fxRate).toFixed(4)} USD</strong> (taxa aplicada a todas transacoes)
+              </div>
+            )}
 
             {preview.sample.length > 0 && (
               <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -216,7 +352,8 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
                       <th className="text-left py-2 px-3 font-medium text-slate-500">Data</th>
                       <th className="text-left py-2 px-3 font-medium text-slate-500">Descricao</th>
                       <th className="text-left py-2 px-3 font-medium text-slate-500">Contraparte</th>
-                      <th className="text-right py-2 px-3 font-medium text-slate-500">Valor</th>
+                      <th className="text-right py-2 px-3 font-medium text-slate-500">Valor orig.</th>
+                      <th className="text-right py-2 px-3 font-medium text-slate-500">Em USD</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -227,6 +364,9 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
                         <td className="py-2 px-3 text-slate-500">{s.counterparty || "-"}</td>
                         <td className="py-2 px-3 text-right font-mono">
                           {formatCurrency(s.amount_original, s.currency_original)}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-green-700">
+                          {formatCurrency(s.amount_original * Number(fxRate))}
                         </td>
                       </tr>
                     ))}
@@ -252,6 +392,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
         </div>
       )}
 
+      {/* Resultado */}
       {result && (
         <div className="card card-body bg-green-50 border-green-200">
           <div className="flex items-start gap-3">

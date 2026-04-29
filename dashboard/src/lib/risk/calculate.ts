@@ -1,6 +1,6 @@
 import { repository } from "@/lib/data/repository";
 import type { RiskMetric, RiskLevel } from "@/types/database";
-import { MOCK_FX_GBP_USD } from "@/lib/data/mock";
+import { convertToUsd } from "@/lib/fx/rates";
 
 // ============================================================
 // Calculadora do Indice de Risco
@@ -8,8 +8,10 @@ import { MOCK_FX_GBP_USD } from "@/lib/data/mock";
 // Retorna score 0-100 (0 seguro, 100 critico) + breakdown
 // ============================================================
 
-function toUsd(amount: number, currency: string) {
-  return currency === "GBP" ? amount * MOCK_FX_GBP_USD : amount;
+async function toUsd(amount: number, currency: string): Promise<number> {
+  if (currency === "USD") return amount;
+  const result = await convertToUsd(amount, currency);
+  return result.amount_usd;
 }
 
 export interface RiskCalculation {
@@ -41,28 +43,32 @@ export async function computeRisk(): Promise<RiskCalculation> {
   ]);
 
   // Caixa em USD
-  const cash_balance_usd = accounts.reduce(
-    (s, a) => s + toUsd(a.balance_current, a.currency),
-    0
-  );
+  let cash_balance_usd = 0;
+  for (const a of accounts) {
+    cash_balance_usd += await toUsd(a.balance_current, a.currency);
+  }
 
   const today = new Date();
 
   // Recebiveis
-  const receivables_pending = receivables
-    .filter((r) => r.status !== "paid")
-    .reduce((s, r) => s + toUsd(r.amount_total - r.amount_received, r.currency), 0);
-  const receivables_overdue = receivables
-    .filter((r) => r.status !== "paid" && new Date(r.due_date) < today)
-    .reduce((s, r) => s + toUsd(r.amount_total - r.amount_received, r.currency), 0);
+  let receivables_pending = 0;
+  let receivables_overdue = 0;
+  for (const r of receivables) {
+    if (r.status === "paid") continue;
+    const usd = await toUsd(r.amount_total - r.amount_received, r.currency);
+    receivables_pending += usd;
+    if (new Date(r.due_date) < today) receivables_overdue += usd;
+  }
 
   // Dividas
-  const debts_pending = debts
-    .filter((d) => d.status !== "paid")
-    .reduce((s, d) => s + toUsd(d.amount_total - d.amount_paid, d.currency), 0);
-  const debts_overdue = debts
-    .filter((d) => d.status !== "paid" && new Date(d.due_date) < today)
-    .reduce((s, d) => s + toUsd(d.amount_total - d.amount_paid, d.currency), 0);
+  let debts_pending = 0;
+  let debts_overdue = 0;
+  for (const d of debts) {
+    if (d.status === "paid") continue;
+    const usd = await toUsd(d.amount_total - d.amount_paid, d.currency);
+    debts_pending += usd;
+    if (new Date(d.due_date) < today) debts_overdue += usd;
+  }
 
   // Operacao (medias 3 meses)
   const last3 = pnl12m.slice(-3);
@@ -108,11 +114,13 @@ export async function computeRisk(): Promise<RiskCalculation> {
   const f_ad_pct_revenue = monthly_revenue > 0
     ? Math.min((daily_ad_spend * 30) / monthly_revenue, 1)
     : 0;
-  const f_recv_concentration = (() => {
+  const f_recv_concentration = await (async () => {
     if (receivables_pending === 0) return 0;
-    const top = Math.max(
-      ...pendingRecvs.map((r) => toUsd(r.amount_total - r.amount_received, r.currency))
-    );
+    let top = 0;
+    for (const r of pendingRecvs) {
+      const usd = await toUsd(r.amount_total - r.amount_received, r.currency);
+      if (usd > top) top = usd;
+    }
     return top / receivables_pending;
   })();
 
@@ -162,10 +170,12 @@ export async function computeRisk(): Promise<RiskCalculation> {
         runway_impact_days: Math.round((impact / burn_rate) * 30),
       };
     })(),
-    receivables_default_top: (() => {
-      const top = pendingRecvs.length
-        ? Math.max(...pendingRecvs.map((r) => toUsd(r.amount_total - r.amount_received, r.currency)))
-        : 0;
+    receivables_default_top: await (async () => {
+      let top = 0;
+      for (const r of pendingRecvs) {
+        const usd = await toUsd(r.amount_total - r.amount_received, r.currency);
+        if (usd > top) top = usd;
+      }
       return {
         cash_impact: -Math.round(top),
         runway_impact_days: Math.round((-top / burn_rate) * 30),
