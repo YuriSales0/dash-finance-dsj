@@ -11,12 +11,29 @@ export function getApiBase(sandbox: boolean): string {
 // Aceita PKCS#1 (BEGIN RSA PRIVATE KEY) ou PKCS#8 (BEGIN PRIVATE KEY)
 // e retorna sempre em PKCS#8 (que jose requer)
 function normalizePrivateKey(pem: string): string {
-  if (pem.includes("BEGIN PRIVATE KEY")) {
-    return pem; // ja eh PKCS#8
+  // Limpar input: trim, normalizar line endings, remover linhas vazias extras
+  let cleaned = pem
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+
+  // Se a chave foi colada sem quebras de linha, reconstruir
+  if (!cleaned.includes("\n")) {
+    const match = cleaned.match(/^(-----BEGIN [A-Z ]+?-----)(.+?)(-----END [A-Z ]+?-----)$/);
+    if (match) {
+      const body = match[2].match(/.{1,64}/g)?.join("\n") || match[2];
+      cleaned = `${match[1]}\n${body}\n${match[3]}`;
+    }
   }
-  // Converter PKCS#1 -> PKCS#8 usando Node crypto
-  const keyObject = createPrivateKey({ key: pem, format: "pem" });
-  return keyObject.export({ format: "pem", type: "pkcs8" }) as string;
+
+  try {
+    const keyObject = createPrivateKey({ key: cleaned, format: "pem" });
+    return keyObject.export({ format: "pem", type: "pkcs8" }) as string;
+  } catch (err: any) {
+    throw new Error(
+      `Nao foi possivel ler a chave privada. Verifique se ela comeca com -----BEGIN PRIVATE KEY----- (ou -----BEGIN RSA PRIVATE KEY-----) e termina com -----END...-----. Detalhe: ${err.message}`
+    );
+  }
 }
 
 // URL para o usuario autorizar o app no Revolut
