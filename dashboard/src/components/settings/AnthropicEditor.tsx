@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
+  Wand2,
 } from "lucide-react";
 
 interface Status {
@@ -27,6 +28,14 @@ export function AnthropicEditor() {
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+
+  // Bulk classify
+  const [classifying, setClassifying] = useState(false);
+  const [classifyProgress, setClassifyProgress] = useState<{
+    classified: number;
+    remaining: number;
+    rounds: number;
+  } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -84,6 +93,52 @@ export function AnthropicEditor() {
     setTesting(false);
     setTestResult(data);
     if (!res.ok) setError(data.error || "Erro no teste");
+  }
+
+  async function classifyAll() {
+    if (!confirm(
+      "Classificar TODAS transacoes pendentes usando Claude AI?\n\n" +
+      "Pode demorar alguns minutos. Sera processado em lotes ate terminar.\n\n" +
+      "Custo estimado: ~$0.05 por 1000 transacoes."
+    )) return;
+
+    setClassifying(true);
+    setError(null);
+    setClassifyProgress({ classified: 0, remaining: 0, rounds: 0 });
+
+    let totalClassified = 0;
+    let rounds = 0;
+
+    while (true) {
+      rounds++;
+      try {
+        const res = await fetch("/api/transactions/classify-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ limit: 100 }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Erro");
+          break;
+        }
+        totalClassified += data.classified || 0;
+        setClassifyProgress({
+          classified: totalClassified,
+          remaining: data.remaining || 0,
+          rounds,
+        });
+        // Para se nao processou nada ou nao tem mais
+        if (data.processed === 0 || data.remaining === 0) break;
+        // Pausa de 1s entre rounds pra nao sobrecarregar
+        await new Promise((r) => setTimeout(r, 1000));
+      } catch (err: any) {
+        setError(err.message);
+        break;
+      }
+    }
+
+    setClassifying(false);
   }
 
   return (
@@ -226,6 +281,49 @@ export function AnthropicEditor() {
           </div>
         </div>
       </div>
+
+      {/* Acao: classificar tudo */}
+      {status?.has_key && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Wand2 size={16} className="text-purple-600" />
+              Classificar transacoes pendentes em lote
+            </h3>
+          </div>
+          <div className="card-body space-y-3">
+            <p className="text-sm text-slate-600">
+              Faz Claude AI ler e categorizar todas as transacoes que estao sem categoria
+              ou marcadas como "Revisar". Processa em lotes de 100 transacoes ate terminar.
+            </p>
+
+            <button
+              onClick={classifyAll}
+              disabled={classifying}
+              className="btn-primary inline-flex items-center gap-2"
+            >
+              {classifying ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+              {classifying
+                ? `Processando... (${classifyProgress?.classified || 0} classificadas, ${classifyProgress?.remaining || 0} restantes)`
+                : "Classificar tudo agora"}
+            </button>
+
+            {classifyProgress && !classifying && classifyProgress.classified > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800 space-y-1">
+                <p className="font-semibold flex items-center gap-2">
+                  <CheckCircle2 size={14} /> Concluido!
+                </p>
+                <p>{classifyProgress.classified} transacoes classificadas em {classifyProgress.rounds} rodadas</p>
+                {classifyProgress.remaining > 0 ? (
+                  <p>{classifyProgress.remaining} ainda precisam de revisao manual (Claude tinha confianca baixa)</p>
+                ) : (
+                  <p>Tudo categorizado!</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Onde a chave e usada */}
       <div className="card">
