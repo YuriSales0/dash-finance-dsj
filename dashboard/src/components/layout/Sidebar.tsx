@@ -12,12 +12,14 @@ import {
   FileText,
   CreditCard,
   Activity,
+  Upload,
   LogOut,
 } from "lucide-react";
 
 const navItems = [
   { href: "/admin", label: "Visao Geral", icon: LayoutDashboard },
   { href: "/admin/risk", label: "Indice de Risco", icon: Activity },
+  { href: "/admin/import", label: "Importar CSV", icon: Upload },
   { href: "/admin/transactions", label: "Transacoes", icon: ArrowLeftRight },
   { href: "/admin/receivables", label: "Recebiveis", icon: FileText },
   { href: "/admin/debts", label: "Dividas", icon: CreditCard },
