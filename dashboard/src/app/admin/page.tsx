@@ -45,12 +45,18 @@ export default async function OverviewPage() {
     balanceByEntity[a.entity_id] = (balanceByEntity[a.entity_id] || 0) + usd;
   }
 
+  // Ultima atualizacao
+  const lastSyncedAccount = accounts
+    .filter((a) => a.last_synced_at)
+    .sort((a, b) => (b.last_synced_at || "").localeCompare(a.last_synced_at || ""))[0];
+
   return (
     <>
       <Header
         title="Visao Geral"
-        subtitle="Saldos consolidados + metricas das 3 empresas"
+        subtitle="Saldos consolidados + metricas das empresas"
         pendingReviews={transactions.length}
+        lastSyncedAt={lastSyncedAccount?.last_synced_at}
       />
       <div className="p-6 space-y-6">
         {/* KPIs */}

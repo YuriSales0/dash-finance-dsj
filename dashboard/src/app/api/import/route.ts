@@ -162,6 +162,13 @@ export async function POST(request: Request) {
       imported += classified.length;
     }
 
+    // Atualizar timestamp de sync da conta
+    if (imported > 0 || normalized.length > 0) {
+      await sb.from("bank_accounts").update({
+        last_synced_at: new Date().toISOString(),
+      }).eq("id", bank_account_id);
+    }
+
     return NextResponse.json({
       format: fmt,
       total_rows: rows.length,

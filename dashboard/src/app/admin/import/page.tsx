@@ -1,8 +1,8 @@
 import { Header } from "@/components/layout/Header";
 import { ImportForm } from "@/components/import/ImportForm";
 import { repository } from "@/lib/data/repository";
-import { entityNames } from "@/lib/format";
-import { Info } from "lucide-react";
+import { entityNames, formatDateTime } from "@/lib/format";
+import { Info, Upload, Calendar } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,34 @@ export default async function ImportPage() {
         subtitle="Upload de CSV exportado do banco"
       />
       <div className="p-6 space-y-6 max-w-4xl">
+        {/* Status das contas - ultima atualizacao */}
+        <div className="card">
+          <div className="card-header flex items-center gap-2">
+            <Upload size={16} className="text-slate-600" />
+            <h3 className="font-semibold">Ultima atualizacao por conta</h3>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {accounts.map((a) => (
+              <div key={a.id} className="px-4 py-3 flex items-center justify-between text-sm">
+                <div>
+                  <span className="font-medium">{entityNames[a.entity_id] || a.entity_id}</span>
+                  <span className="text-slate-500 ml-2">{a.bank_name} ({a.currency})</span>
+                </div>
+                <div className="text-xs flex items-center gap-1.5">
+                  {a.last_synced_at ? (
+                    <>
+                      <Calendar size={12} className="text-green-600" />
+                      <span className="text-slate-700">{formatDateTime(a.last_synced_at)}</span>
+                    </>
+                  ) : (
+                    <span className="text-slate-400 italic">Nunca importado</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="card card-body bg-blue-50 border-blue-200">
           <div className="flex items-start gap-3">
             <Info className="text-blue-600 mt-0.5" size={18} />
