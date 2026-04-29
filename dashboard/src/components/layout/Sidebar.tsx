@@ -17,6 +17,7 @@ import {
   Link2,
   Settings,
   LogOut,
+  Scale,
 } from "lucide-react";
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/admin/risk", label: "Indice de Risco", icon: Activity },
   { href: "/admin/import", label: "Importar CSV", icon: Upload },
   { href: "/admin/transactions", label: "Transacoes", icon: ArrowLeftRight },
+  { href: "/admin/reconciliation", label: "Reconciliacao", icon: Scale },
   { href: "/admin/receivables", label: "Recebiveis", icon: FileText },
   { href: "/admin/debts", label: "Dividas", icon: CreditCard },
   { href: "/admin/pnl", label: "P&L Mensal", icon: TrendingUp },
