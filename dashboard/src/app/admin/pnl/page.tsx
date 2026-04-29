@@ -92,6 +92,11 @@ export default async function PnlPage({
                       ${currentMonth.total_costs.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                     </span>
                   </div>
+                  {currentMonth.cost_other > 0 && (
+                    <p className="text-xs text-amber-600 -mt-2">
+                      Inclui {`$${currentMonth.cost_other.toLocaleString("en-US", { maximumFractionDigits: 0 })}`} em "outros" (sem categoria + escritorio)
+                    </p>
+                  )}
                   <div className="flex justify-between items-baseline border-t border-slate-200 pt-4">
                     <span className="text-slate-700 font-medium">Lucro Liquido</span>
                     <span className="text-3xl font-bold text-blue-600">
