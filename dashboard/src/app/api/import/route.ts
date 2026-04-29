@@ -98,16 +98,33 @@ export async function POST(request: Request) {
     const entityName = (entityRow as { name: string } | null)?.name || entity_id;
     const bankName = (bankRow as { bank_name: string } | null)?.bank_name || "Bank";
 
-    // Dedup: buscar external_ids ja existentes
-    const externalIds = normalized.map((t) => t.external_id);
-    const { data: existing } = await sb
-      .from("transactions")
-      .select("external_id")
-      .in("external_id", externalIds);
+    // Dedup INTRA-CSV (Revolut exporta multiplas legs com mesmo ID)
+    const intraSet = new Set<string>();
+    const dedupedNormalized = normalized.filter((t) => {
+      if (intraSet.has(t.external_id)) return false;
+      intraSet.add(t.external_id);
+      return true;
+    });
+    const intraDuplicates = normalized.length - dedupedNormalized.length;
 
-    const existingSet = new Set((existing as { external_id: string }[] | null)?.map((e) => e.external_id) || []);
-    const newOnes = normalized.filter((t) => !existingSet.has(t.external_id));
-    const skipped = normalized.length - newOnes.length;
+    // Dedup INTER-CSV: buscar external_ids ja existentes no banco
+    const externalIds = dedupedNormalized.map((t) => t.external_id);
+    let existingSet = new Set<string>();
+
+    // Em chunks de 500 (limit IN clause do Supabase)
+    for (let i = 0; i < externalIds.length; i += 500) {
+      const chunk = externalIds.slice(i, i + 500);
+      const { data: existing } = await sb
+        .from("transactions")
+        .select("external_id")
+        .in("external_id", chunk);
+      ((existing as { external_id: string }[] | null) || []).forEach((e) =>
+        existingSet.add(e.external_id)
+      );
+    }
+
+    const newOnes = dedupedNormalized.filter((t) => !existingSet.has(t.external_id));
+    const skipped = dedupedNormalized.length - newOnes.length + intraDuplicates;
 
     // Modo preview: nao insere
     if (preview_only) {
@@ -154,12 +171,21 @@ export async function POST(request: Request) {
 
       const { error } = await sb.from("transactions").insert(classified);
       if (error) {
-        return NextResponse.json(
-          { error: error.message, imported_so_far: imported, batch_failed: i },
-          { status: 500 }
-        );
+        // Se for unique violation, tentar uma por uma (skip duplicatas)
+        if (error.code === "23505") {
+          for (const tx of classified) {
+            const { error: singleErr } = await sb.from("transactions").insert(tx);
+            if (!singleErr) imported++;
+          }
+        } else {
+          return NextResponse.json(
+            { error: error.message, imported_so_far: imported, batch_failed: i },
+            { status: 500 }
+          );
+        }
+      } else {
+        imported += classified.length;
       }
-      imported += classified.length;
     }
 
     // Atualizar timestamp de sync da conta
