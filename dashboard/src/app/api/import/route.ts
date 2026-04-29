@@ -169,6 +169,39 @@ export async function POST(request: Request) {
       }).eq("id", bank_account_id);
     }
 
+    // Bookkeeping automatico: regenerar P&L dos meses afetados + detectar intercompany
+    let pnlGenerated: string[] = [];
+    let intercompanyDetected = 0;
+
+    if (imported > 0) {
+      // Coletar meses unicos das transacoes importadas
+      const monthsAffected = new Set<string>();
+      for (const tx of newOnes) {
+        const d = new Date(tx.timestamp);
+        const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+        monthsAffected.add(monthStart.toISOString().slice(0, 10));
+      }
+
+      // Detectar intercompany das transacoes recentes
+      try {
+        const { data: ic } = await sb.rpc("detect_intercompany", { p_hours_window: 168 });
+        intercompanyDetected = (ic as number) || 0;
+      } catch {
+        // nao critico
+      }
+
+      // Regenerar P&L para cada mes afetado (todas empresas + consolidado)
+      const monthsArray = Array.from(monthsAffected);
+      for (const month of monthsArray) {
+        try {
+          await sb.rpc("generate_consolidated_pnl", { p_month: month });
+          pnlGenerated.push(month);
+        } catch {
+          // nao critico - admin pode regerar manualmente
+        }
+      }
+    }
+
     return NextResponse.json({
       format: fmt,
       total_rows: rows.length,
@@ -176,6 +209,8 @@ export async function POST(request: Request) {
       imported,
       skipped_duplicates: skipped,
       needs_review: needsReviewCount,
+      pnl_months_regenerated: pnlGenerated,
+      intercompany_detected: intercompanyDetected,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });

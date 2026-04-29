@@ -1,17 +1,30 @@
 import { Header } from "@/components/layout/Header";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
+import { BookkeepingStatus } from "@/components/dashboard/BookkeepingStatus";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, formatPercent, entityColors, entityNames } from "@/lib/format";
 import { convertToUsd } from "@/lib/fx/rates";
 import { AlertTriangle } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function OverviewPage() {
-  const [accounts, pnl12m, transactions] = await Promise.all([
+  const [accounts, pnl12m, transactions, receivables, debts] = await Promise.all([
     repository.getBankAccounts(),
     repository.getMonthlyPnl({ entity_id: "consolidated", months: 12 }),
     repository.getTransactions({ needs_review: true, limit: 100 }),
+    repository.getReceivables(),
+    repository.getDebts(),
   ]);
+
+  const today = new Date();
+  const receivablesOverdue = receivables.filter(
+    (r) => r.status !== "paid" && new Date(r.due_date) < today
+  ).length;
+  const debtsOverdue = debts.filter(
+    (d) => d.status !== "paid" && new Date(d.due_date) < today
+  ).length;
 
   // Saldo total em USD (converte GBP/EUR/BRL com cotacao do dia)
   let totalBalanceUsd = 0;
@@ -59,6 +72,14 @@ export default async function OverviewPage() {
         lastSyncedAt={lastSyncedAccount?.last_synced_at}
       />
       <div className="p-6 space-y-6">
+        <BookkeepingStatus
+          pendingReviews={transactions.length}
+          receivablesOverdue={receivablesOverdue}
+          debtsOverdue={debtsOverdue}
+          lastSyncedAt={lastSyncedAccount?.last_synced_at || null}
+          lastPnlGeneratedAt={currentMonth?.generated_at || null}
+        />
+
         {/* KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card card-body">
