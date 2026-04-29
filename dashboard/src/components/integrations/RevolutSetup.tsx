@@ -389,7 +389,9 @@ function CredentialsForm({ bankAccountId, onSaved }: { bankAccountId: string; on
     sandbox: false,
   });
   const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -409,6 +411,26 @@ function CredentialsForm({ bankAccountId, onSaved }: { bankAccountId: string; on
       return;
     }
     onSaved();
+  }
+
+  async function testKey() {
+    setTesting(true);
+    setError(null);
+    setDebugInfo(null);
+
+    const res = await fetch("/api/revolut/debug-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        private_key: form.private_key,
+        client_id: form.client_id,
+        issuer: form.issuer,
+      }),
+    });
+
+    setTesting(false);
+    const data = await res.json();
+    setDebugInfo(data);
   }
 
   return (
@@ -463,10 +485,36 @@ function CredentialsForm({ bankAccountId, onSaved }: { bankAccountId: string; on
         </div>
       )}
 
-      <button type="submit" disabled={loading} className="btn-primary inline-flex items-center gap-2">
-        {loading && <Loader2 size={14} className="animate-spin" />}
-        Salvar credenciais
-      </button>
+      {debugInfo && (
+        <div className={`rounded p-3 text-xs space-y-1 ${debugInfo.ok ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>
+          <p className="font-semibold">
+            {debugInfo.ok ? "Chave validada!" : `Falha em: ${debugInfo.stage}`}
+          </p>
+          {debugInfo.error && <p className="text-red-700">{debugInfo.error}</p>}
+          <details className="mt-2">
+            <summary className="cursor-pointer">Detalhes diagnostico</summary>
+            <pre className="mt-1 text-[10px] bg-white/50 p-2 rounded overflow-x-auto">
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={testKey}
+          disabled={testing || !form.private_key}
+          className="btn-secondary inline-flex items-center gap-2"
+        >
+          {testing && <Loader2 size={14} className="animate-spin" />}
+          Testar chave
+        </button>
+        <button type="submit" disabled={loading} className="btn-primary inline-flex items-center gap-2">
+          {loading && <Loader2 size={14} className="animate-spin" />}
+          Salvar credenciais
+        </button>
+      </div>
     </form>
   );
 }

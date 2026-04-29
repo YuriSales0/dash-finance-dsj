@@ -12,27 +12,32 @@ export function getApiBase(sandbox: boolean): string {
 // e retorna sempre em PKCS#8 (que jose requer)
 // Normalizacao robusta: extrai body, remove qualquer caractere fora do base64,
 // e reconstroi PEM com line breaks corretas (64 chars por linha)
-function normalizePrivateKey(pem: string): string {
+export function normalizePrivateKey(pem: string): string {
+  // Normalizar dashes unicode comuns (em-dash, en-dash, etc)
+  let normalized = pem
+    .replace(/[‐‑‒–—―−]/g, "-")
+    .replace(/ /g, " "); // nbsp -> space
+
   // Tentar extrair os marcadores BEGIN/END
-  const match = pem.match(
-    /-----BEGIN\s+(RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----([\s\S]*?)-----\s*END\s+(?:RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----/i
+  const match = normalized.match(
+    /-----\s*BEGIN\s+(RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----([\s\S]*?)-----\s*END\s+(?:RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-----/i
   );
 
   if (!match) {
     throw new Error(
-      "Chave invalida: nao encontrei os marcadores -----BEGIN...PRIVATE KEY----- e -----END...-----. Cole a chave inteira."
+      "PEM_MARKERS_NOT_FOUND: Nao encontrei -----BEGIN...-----. " +
+        "Inicio recebido: " +
+        JSON.stringify(normalized.slice(0, 50))
     );
   }
 
   const keyType = match[1].replace(/\s+/g, " ").toUpperCase();
-  // Remover TUDO que nao seja base64 valido
   const body = match[2].replace(/[^A-Za-z0-9+/=]/g, "");
 
   if (body.length < 100) {
-    throw new Error("Chave invalida: corpo muito curto. Cole a chave completa.");
+    throw new Error(`PEM_BODY_TOO_SHORT: corpo tem ${body.length} chars (minimo ~600)`);
   }
 
-  // Reformatar com 64 chars por linha
   const lines = body.match(/.{1,64}/g)!.join("\n");
   const reconstructed = `-----BEGIN ${keyType}-----\n${lines}\n-----END ${keyType}-----\n`;
 
@@ -41,7 +46,7 @@ function normalizePrivateKey(pem: string): string {
     return keyObject.export({ format: "pem", type: "pkcs8" }) as string;
   } catch (err: any) {
     throw new Error(
-      `Nao foi possivel decodificar a chave privada. Detalhe: ${err.message}`
+      `KEY_DECODE_FAILED: ${err.message}. KeyType: ${keyType}, BodyLen: ${body.length}`
     );
   }
 }

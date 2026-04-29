@@ -65,6 +65,15 @@ export async function GET(request: Request) {
         sandbox: c.sandbox,
       });
     } catch (err: any) {
+      // Log detalhado pra diagnostico
+      console.error("Revolut code exchange error:", {
+        error: err.message,
+        client_id_len: c.client_id?.length,
+        issuer: c.issuer,
+        private_key_first_30: c.private_key?.slice(0, 30),
+        private_key_last_30: c.private_key?.slice(-30),
+        sandbox: c.sandbox,
+      });
       return NextResponse.redirect(
         `${redirectTo}?error=${encodeURIComponent("Falha ao trocar code: " + err.message)}`
       );
