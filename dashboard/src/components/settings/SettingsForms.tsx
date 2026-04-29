@@ -176,6 +176,39 @@ export function SettingsForms({
     }
   }
 
+  async function matchIntercompanyByName(dryRun = false) {
+    setLoading(dryRun ? "match-dry" : "match-name");
+    setMsg(null);
+
+    const res = await fetch("/api/intercompany/match-by-name", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dry_run: dryRun }),
+    });
+
+    setLoading(null);
+    const data = await res.json();
+    if (!res.ok) {
+      setMsg(`Erro: ${data.error}`);
+      return;
+    }
+
+    if (dryRun) {
+      const sample = (data.sample || []).slice(0, 5).map((s: any) =>
+        `${s.from_entity} -> ${s.to_entity}: ${s.counterparty} ($${s.amount_usd})`
+      ).join(" | ");
+      setMsg(
+        `Preview: ${data.total_matches} transacoes seriam marcadas como intercompany. Exemplos: ${sample}`
+      );
+      return;
+    }
+
+    setMsg(
+      `${data.total_matches} transacoes marcadas, ${data.pairs_linked} pares vinculados, ${data.months_regenerated?.length || 0} meses regenerados.`
+    );
+    router.refresh();
+  }
+
   async function updateBalance(accountId: string) {
     setLoading(`bal-${accountId}`);
     await fetch("/api/accounts", {
@@ -210,13 +243,41 @@ export function SettingsForms({
           </h3>
         </div>
         <div className="divide-y divide-slate-100">
+          {/* 0: Match intercompany por nome */}
+          <div className="px-4 py-3 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-sm">Marcar intercompany pelo nome da contraparte</p>
+              <p className="text-xs text-slate-600">
+                Toda transacao onde a contraparte cita "DSJ Network", "Universal MKT", "DSJ Connect" ou "DSJ Commerce" vira intercompany.
+                Util quando a deteccao por valor/data nao captura tudo.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => matchIntercompanyByName(true)}
+                disabled={loading === "match-dry" || loading === "match-name"}
+                className="btn-secondary inline-flex items-center gap-2 text-sm whitespace-nowrap"
+              >
+                {loading === "match-dry" ? <Loader2 size={14} className="animate-spin" /> : null}
+                Preview
+              </button>
+              <button
+                onClick={() => matchIntercompanyByName(false)}
+                disabled={loading === "match-name" || loading === "match-dry"}
+                className="btn-primary inline-flex items-center gap-2 text-sm whitespace-nowrap"
+              >
+                {loading === "match-name" ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
+                Aplicar
+              </button>
+            </div>
+          </div>
+
           {/* 1: Re-detectar intercompany */}
           <div className="px-4 py-3 flex items-center justify-between gap-4">
             <div>
-              <p className="font-medium text-sm">Re-detectar intercompany</p>
+              <p className="font-medium text-sm">Re-detectar intercompany por valor/data</p>
               <p className="text-xs text-slate-600">
-                Procura novos pares DSJ ↔ Universal com janela de 30 dias e tolerancia 5%.
-                Faca isso ANTES de recalcular se transferencias internas nao foram detectadas.
+                Procura pares com mesmo valor (5% tolerancia) e ate 30 dias entre si.
               </p>
             </div>
             <button
