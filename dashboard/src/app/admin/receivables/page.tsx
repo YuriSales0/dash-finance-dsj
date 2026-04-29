@@ -5,6 +5,8 @@ import { formatCurrency, formatDate, entityNames } from "@/lib/format";
 import { ReceivableForm } from "@/components/receivables/ReceivableForm";
 import { FileText, AlertCircle, Banknote } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function ReceivablesPage() {
   const receivables = await repository.getReceivables();
 

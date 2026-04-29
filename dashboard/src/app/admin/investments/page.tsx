@@ -4,6 +4,8 @@ import { repository } from "@/lib/data/repository";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Users, TrendingUp, DollarSign, Award } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function InvestmentsPage() {
   const [investors, opportunities, investments] = await Promise.all([
     repository.getInvestors(),

@@ -5,6 +5,8 @@ import { repository } from "@/lib/data/repository";
 import { formatCurrency } from "@/lib/format";
 import { Eye, EyeOff, TrendingUp, Calendar, CheckCircle, Award } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function PreviewPage() {
   const [metrics, pnl12m, opportunities] = await Promise.all([
     repository.getInvestorMetrics(),

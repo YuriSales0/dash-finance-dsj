@@ -5,6 +5,8 @@ import { formatCurrency, formatDate, entityNames } from "@/lib/format";
 import { DebtForm } from "@/components/debts/DebtForm";
 import { CreditCard, AlertTriangle, Calendar } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function DebtsPage() {
   const debts = await repository.getDebts();
 

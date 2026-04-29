@@ -2,9 +2,11 @@ import { Header } from "@/components/layout/Header";
 import { TransactionsList } from "@/components/transactions/TransactionsList";
 import { repository } from "@/lib/data/repository";
 
+export const dynamic = "force-dynamic";
+
 export default async function TransactionsPage() {
   const [transactions, accounts] = await Promise.all([
-    repository.getTransactions(),
+    repository.getTransactions({ limit: 1000 }),
     repository.getBankAccounts(),
   ]);
 
