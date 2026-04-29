@@ -292,6 +292,9 @@ class MockRepository implements Repository {
       redemption_date: null,
       redeemed_at: null,
       actual_return: null,
+      contract_text: null,
+      contract_accepted_at: null,
+      contract_ip: null,
       created_at: new Date().toISOString(),
     };
     MOCK_FINANCINGS.push(newFin);

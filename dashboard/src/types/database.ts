@@ -279,7 +279,45 @@ export interface Financing {
   redemption_date: string | null;
   redeemed_at: string | null;
   actual_return: number | null;
+  contract_text: string | null;
+  contract_accepted_at: string | null;
+  contract_ip: string | null;
   created_at: string;
+}
+
+export type PaymentStatus = "scheduled" | "paid" | "overdue" | "cancelled";
+
+export interface PaymentScheduleItem {
+  id: number;
+  financing_id: number;
+  installment_number: number;
+  due_date: string;
+  amount_principal: number;
+  amount_interest: number;
+  amount_total: number;
+  status: PaymentStatus;
+  paid_at: string | null;
+  paid_amount: number | null;
+  payment_ref: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface InvestorStatement {
+  id: number;
+  financing_id: number;
+  investor_id: number;
+  period_start: string;
+  period_end: string;
+  opening_balance: number;
+  total_received: number;
+  total_interest: number;
+  closing_balance: number;
+  payments: Record<string, unknown>[] | null;
+  status: "draft" | "sent" | "viewed";
+  generated_at: string;
+  sent_at: string | null;
+  viewed_at: string | null;
 }
 
 export type RiskLevel = "low" | "medium" | "high" | "critical";

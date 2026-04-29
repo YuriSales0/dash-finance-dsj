@@ -474,6 +474,7 @@ export const MOCK_FINANCINGS: Financing[] = [
     contract_signed_at: daysFrom(-2) + "T10:00:00Z",
     confirmed_at: daysFrom(-2) + "T11:00:00Z",
     redemption_date: daysFrom(11), redeemed_at: null, actual_return: null,
+    contract_text: null, contract_accepted_at: daysFrom(-2) + "T10:00:00Z", contract_ip: null,
     created_at: daysFrom(-2) + "T10:00:00Z",
   },
   {
@@ -483,6 +484,7 @@ export const MOCK_FINANCINGS: Financing[] = [
     contract_signed_at: daysFrom(-1) + "T10:00:00Z",
     confirmed_at: daysFrom(-1) + "T11:00:00Z",
     redemption_date: daysFrom(11), redeemed_at: null, actual_return: null,
+    contract_text: null, contract_accepted_at: daysFrom(-1) + "T10:00:00Z", contract_ip: null,
     created_at: daysFrom(-1) + "T10:00:00Z",
   },
 ];
