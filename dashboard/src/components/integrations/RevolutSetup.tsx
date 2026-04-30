@@ -820,8 +820,52 @@ function CredentialsForm({ bankAccountId, onSaved }: { bankAccountId: string; on
   });
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [generatedCert, setGeneratedCert] = useState<string | null>(null);
+  const [copiedCert, setCopiedCert] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+
+  async function generateCert() {
+    if (!form.client_id) {
+      setError("Preencha o Client ID antes de gerar o certificado");
+      return;
+    }
+    setGenerating(true);
+    setError(null);
+    setGeneratedCert(null);
+
+    const res = await fetch("/api/revolut/generate-cert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bank_account_id: bankAccountId,
+        client_id: form.client_id,
+        issuer: form.issuer,
+        sandbox: form.sandbox,
+      }),
+    });
+
+    setGenerating(false);
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Erro ao gerar certificado");
+      return;
+    }
+    setGeneratedCert(data.certificate);
+  }
+
+  function copyCert() {
+    if (!generatedCert) return;
+    navigator.clipboard.writeText(generatedCert);
+    setCopiedCert(true);
+    setTimeout(() => setCopiedCert(false), 2000);
+  }
+
+  function finishAfterGenerate() {
+    onSaved();
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -864,7 +908,8 @@ function CredentialsForm({ bankAccountId, onSaved }: { bankAccountId: string; on
   }
 
   return (
-    <form onSubmit={submit} className="card-body space-y-3 border-t border-slate-200">
+    <div className="card-body space-y-4 border-t border-slate-200">
+      {/* Campos basicos (sempre visiveis) */}
       <div>
         <label className="block text-xs font-medium text-slate-700 mb-1">Client ID</label>
         <input
@@ -885,19 +930,6 @@ function CredentialsForm({ bankAccountId, onSaved }: { bankAccountId: string; on
           required
         />
       </div>
-      <div>
-        <label className="block text-xs font-medium text-slate-700 mb-1">
-          Private Key (conteudo do revolut_private.pem)
-        </label>
-        <textarea
-          className="input font-mono text-[10px] leading-tight"
-          rows={6}
-          value={form.private_key}
-          onChange={(e) => setForm({ ...form, private_key: e.target.value })}
-          placeholder="-----BEGIN PRIVATE KEY-----..."
-          required
-        />
-      </div>
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input
           type="checkbox"
@@ -915,36 +947,146 @@ function CredentialsForm({ bankAccountId, onSaved }: { bankAccountId: string; on
         </div>
       )}
 
-      {debugInfo && (
-        <div className={`rounded p-3 text-xs space-y-1 ${debugInfo.ok ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>
-          <p className="font-semibold">
-            {debugInfo.ok ? "Chave validada!" : `Falha em: ${debugInfo.stage}`}
+      {/* Modo principal: gerar cert no servidor */}
+      {!generatedCert && !manualMode && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+          <p className="text-sm font-semibold text-blue-900">Gerar certificado automaticamente</p>
+          <p className="text-xs text-blue-800">
+            O servidor gera um par de chaves RSA 2048 + certificado X509.
+            A chave privada fica salva no banco de dados, e voce so precisa copiar
+            o certificado publico pra colar no Revolut Business Portal.
+            Zero arquivos locais, zero confusao.
           </p>
-          {debugInfo.error && <p className="text-red-700">{debugInfo.error}</p>}
-          <details className="mt-2">
-            <summary className="cursor-pointer">Detalhes diagnostico</summary>
-            <pre className="mt-1 text-[10px] bg-white/50 p-2 rounded overflow-x-auto">
-              {JSON.stringify(debugInfo, null, 2)}
-            </pre>
-          </details>
+          <div className="flex gap-2">
+            <button
+              onClick={generateCert}
+              disabled={generating || !form.client_id}
+              className="btn-primary inline-flex items-center gap-2 text-sm"
+            >
+              {generating && <Loader2 size={14} className="animate-spin" />}
+              Gerar certificado
+            </button>
+            <button
+              onClick={() => setManualMode(true)}
+              className="btn-secondary text-xs"
+            >
+              Prefiro colar minha chave manual
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={testKey}
-          disabled={testing || !form.private_key}
-          className="btn-secondary inline-flex items-center gap-2"
-        >
-          {testing && <Loader2 size={14} className="animate-spin" />}
-          Testar chave
-        </button>
-        <button type="submit" disabled={loading} className="btn-primary inline-flex items-center gap-2">
-          {loading && <Loader2 size={14} className="animate-spin" />}
-          Salvar credenciais
-        </button>
-      </div>
-    </form>
+      {/* Cert gerado: mostrar pra copiar */}
+      {generatedCert && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+          <p className="text-sm font-semibold text-green-900">
+            <CheckCircle size={14} className="inline mr-1" />
+            Chave privada salva no banco. Agora:
+          </p>
+          <ol className="text-xs text-green-800 space-y-2 list-decimal list-inside">
+            <li>
+              Copie o certificado abaixo{" "}
+              <button
+                onClick={copyCert}
+                className="text-brand-600 font-semibold hover:underline inline-flex items-center gap-1"
+              >
+                {copiedCert ? (
+                  <><CheckCircle size={12} /> Copiado!</>
+                ) : (
+                  <><Copy size={12} /> Copiar certificado</>
+                )}
+              </button>
+            </li>
+            <li>
+              Vá em{" "}
+              <a
+                href="https://business.revolut.com/settings/api"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-600 underline inline-flex items-center gap-1"
+              >
+                Revolut Business → Settings → APIs <ExternalLink size={10} />
+              </a>
+            </li>
+            <li>Encontre o app com Client ID <code className="bg-white/50 px-1 rounded">{form.client_id}</code></li>
+            <li>Cole o certificado no campo de upload</li>
+            <li>Salve e volte aqui</li>
+          </ol>
+
+          <details>
+            <summary className="cursor-pointer text-xs text-green-700">
+              Ver certificado (pra copiar manualmente)
+            </summary>
+            <pre className="mt-2 bg-white rounded p-2 text-[10px] overflow-x-auto whitespace-pre-wrap select-all">
+              {generatedCert}
+            </pre>
+          </details>
+
+          <button
+            onClick={finishAfterGenerate}
+            className="btn-primary text-sm"
+          >
+            Ja colei no Revolut — prosseguir
+          </button>
+        </div>
+      )}
+
+      {/* Modo manual (fallback) */}
+      {manualMode && (
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Private Key (conteudo do revolut_private.pem)
+            </label>
+            <textarea
+              className="input font-mono text-[10px] leading-tight"
+              rows={6}
+              value={form.private_key}
+              onChange={(e) => setForm({ ...form, private_key: e.target.value })}
+              placeholder="-----BEGIN PRIVATE KEY-----..."
+              required
+            />
+          </div>
+
+          {debugInfo && (
+            <div className={`rounded p-3 text-xs space-y-1 ${debugInfo.ok ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>
+              <p className="font-semibold">
+                {debugInfo.ok ? "Chave validada!" : `Falha em: ${debugInfo.stage}`}
+              </p>
+              {debugInfo.error && <p className="text-red-700">{debugInfo.error}</p>}
+              <details className="mt-2">
+                <summary className="cursor-pointer">Detalhes diagnostico</summary>
+                <pre className="mt-1 text-[10px] bg-white/50 p-2 rounded overflow-x-auto">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={testKey}
+              disabled={testing || !form.private_key}
+              className="btn-secondary inline-flex items-center gap-2"
+            >
+              {testing && <Loader2 size={14} className="animate-spin" />}
+              Testar chave
+            </button>
+            <button type="submit" disabled={loading} className="btn-primary inline-flex items-center gap-2">
+              {loading && <Loader2 size={14} className="animate-spin" />}
+              Salvar credenciais
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualMode(false)}
+              className="btn-secondary text-xs"
+            >
+              Voltar
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
