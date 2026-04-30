@@ -404,10 +404,11 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
               )}
 
               {isDraft && (
-                <div className="card-body bg-amber-50 border-t border-amber-200">
+                <div className="card-body bg-amber-50 border-t border-amber-200 space-y-2">
                   <p className="text-xs text-amber-800">
                     Credenciais salvas. Clique em <strong>Autorizar</strong> acima para abrir o Revolut e completar a conexao.
                   </p>
+                  <KeyPairVerifier bankAccountId={acc.id} />
                 </div>
               )}
 
@@ -424,6 +425,117 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function KeyPairVerifier({ bankAccountId }: { bankAccountId: string }) {
+  const [data, setData] = useState<{
+    public_key_pem: string;
+    public_key_sha256: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    const res = await fetch(`/api/revolut/public-key?bank_account_id=${encodeURIComponent(bankAccountId)}`);
+    const d = await res.json();
+    setLoading(false);
+    if (!res.ok) {
+      setError(d.error || "Erro");
+      return;
+    }
+    setData(d);
+  }
+
+  function copyKey() {
+    if (!data) return;
+    navigator.clipboard.writeText(data.public_key_pem);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 1500);
+  }
+
+  if (!data && !loading && !error) {
+    return (
+      <div>
+        <button onClick={load} className="btn-secondary text-xs">
+          Diagnosticar par de chaves (se OAuth falhou com signature mismatch)
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {loading && (
+        <div className="text-xs text-slate-600 flex items-center gap-2">
+          <Loader2 size={12} className="animate-spin" /> Derivando chave publica...
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 text-red-700 rounded p-2 text-xs flex items-start gap-2">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {data && (
+        <div className="bg-white border border-slate-200 rounded p-3 space-y-3 text-xs">
+          <div>
+            <p className="font-semibold text-slate-700 mb-1">Como diagnosticar</p>
+            <p className="text-slate-600">
+              Esta e a chave publica que <strong>casa</strong> com a chave privada salva no DB.
+              Para que o OAuth funcione, esta exata chave publica precisa estar no certificado
+              que voce subiu no Revolut Business Portal.
+            </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-slate-500">Fingerprint SHA256 (chave publica DER):</span>
+              <button onClick={copyKey} className="text-brand-600 hover:underline text-[10px]">
+                {copiedKey ? "PEM copiada!" : "copiar PEM"}
+              </button>
+            </div>
+            <code className="block bg-slate-50 p-2 rounded text-[10px] break-all">
+              {data.public_key_sha256}
+            </code>
+          </div>
+
+          <details>
+            <summary className="cursor-pointer text-slate-600">
+              Ver chave publica completa (PEM)
+            </summary>
+            <pre className="mt-2 bg-slate-50 p-2 rounded text-[10px] overflow-x-auto whitespace-pre-wrap break-all">
+              {data.public_key_pem}
+            </pre>
+          </details>
+
+          <div className="pt-2 border-t border-slate-100">
+            <p className="font-semibold text-slate-700 mb-1">Compare localmente</p>
+            <p className="text-slate-600 mb-1">
+              Rode este comando no terminal local para extrair a publica do seu cert:
+            </p>
+            <code className="block bg-slate-900 text-slate-100 p-2 rounded text-[10px] overflow-x-auto">
+              openssl x509 -in revolut_public.pem -pubkey -noout
+            </code>
+            <p className="text-slate-600 mt-2 mb-1">Para o fingerprint SHA256:</p>
+            <code className="block bg-slate-900 text-slate-100 p-2 rounded text-[10px] overflow-x-auto">
+              openssl x509 -in revolut_public.pem -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256
+            </code>
+            <p className="text-slate-600 mt-2">
+              <strong>Se forem iguais:</strong> o par esta correto. O cert subido no Revolut talvez seja outro — re-suba o seu <code>revolut_public.pem</code>.
+            </p>
+            <p className="text-slate-600 mt-1">
+              <strong>Se forem diferentes:</strong> a privada salva nao corresponde ao cert local. Apague aqui (icone de lixeira) e configure de novo colando o conteudo correto do <code>revolut_private.pem</code>.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
