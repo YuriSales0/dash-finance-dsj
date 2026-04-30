@@ -114,20 +114,56 @@ export async function listAccounts(bankAccountId: string): Promise<RevolutAccoun
   return res.json();
 }
 
-// GET /transactions?from=YYYY-MM-DD
+// GET /transactions?from=YYYY-MM-DD&to=YYYY-MM-DDTHH:mm:ss
+// Pagina ate esgotar (Revolut retorna max 1000 por chamada, ordenado desc por created_at).
+// Estrategia: usa `to` como cursor, setando para o created_at do item mais antigo da pagina anterior.
+// Cap de seguranca: 50 paginas (50k transacoes).
 export async function listTransactions(
   bankAccountId: string,
-  options: { from?: string; to?: string; count?: number } = {}
+  options: { from?: string; to?: string; pageSize?: number; maxPages?: number } = {}
 ): Promise<RevolutTransaction[]> {
   const { token, apiBase } = await getValidAccessToken(bankAccountId);
-  const params = new URLSearchParams();
-  if (options.from) params.set("from", options.from);
-  if (options.to) params.set("to", options.to);
-  params.set("count", String(options.count || 1000));
+  const pageSize = options.pageSize || 1000;
+  const maxPages = options.maxPages || 50;
 
-  const res = await fetch(`${apiBase}/transactions?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Revolut transactions failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  const all: RevolutTransaction[] = [];
+  const seen = new Set<string>();
+  let cursor = options.to; // sera atualizado com created_at do mais antigo
+
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams();
+    if (options.from) params.set("from", options.from);
+    if (cursor) params.set("to", cursor);
+    params.set("count", String(pageSize));
+
+    const res = await fetch(`${apiBase}/transactions?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Revolut transactions failed: ${res.status} ${await res.text()}`);
+
+    const batch: RevolutTransaction[] = await res.json();
+    if (batch.length === 0) break;
+
+    let added = 0;
+    for (const tx of batch) {
+      if (!seen.has(tx.id)) {
+        seen.add(tx.id);
+        all.push(tx);
+        added++;
+      }
+    }
+
+    // Se a pagina veio incompleta OU nada novo foi adicionado, paramos
+    if (batch.length < pageSize || added === 0) break;
+
+    // Avancar cursor: pegar o created_at MAIS ANTIGO da pagina (assumindo ordem desc)
+    let oldest = batch[0].created_at;
+    for (const tx of batch) {
+      if (tx.created_at < oldest) oldest = tx.created_at;
+    }
+    if (cursor === oldest) break; // proteção contra loop
+    cursor = oldest;
+  }
+
+  return all;
 }

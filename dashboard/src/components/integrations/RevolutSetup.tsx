@@ -73,8 +73,16 @@ function RevolutSetupInner({ accounts }: { accounts: AccountOption[] }) {
   useEffect(() => {
     const success = params.get("success");
     const error = params.get("error");
-    if (success === "connected") {
-      setGlobalMessage({ type: "success", text: "Revolut conectado com sucesso! Voce pode sincronizar agora." });
+    if (success === "connected_ready") {
+      setGlobalMessage({
+        type: "success",
+        text: "Revolut conectado e sub-conta auto-selecionada. Voce pode sincronizar agora.",
+      });
+    } else if (success === "connected") {
+      setGlobalMessage({
+        type: "success",
+        text: "Revolut conectado. Selecione abaixo qual sub-conta sincronizar.",
+      });
     } else if (error) {
       setGlobalMessage({ type: "error", text: `Erro na autorizacao: ${error}` });
     }
@@ -96,18 +104,32 @@ function RevolutSetupInner({ accounts }: { accounts: AccountOption[] }) {
     setTimeout(() => setCopied(null), 1500);
   }
 
-  async function syncAccount(bankAccountId: string) {
+  async function syncAccount(bankAccountId: string, mode: "30" | "90" | "all") {
     setSyncingId(bankAccountId);
     setSyncResult(null);
+    const body: any = { bank_account_id: bankAccountId };
+    if (mode === "all") body.all = true;
+    else body.days = mode === "30" ? 30 : 90;
+
     const res = await fetch("/api/revolut/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bank_account_id: bankAccountId, days: 30 }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     setSyncingId(null);
     setSyncResult({ id: bankAccountId, result: data });
     router.refresh();
+    loadCredentials();
+  }
+
+  async function clearSubAccount(bankAccountId: string) {
+    if (!confirm("Trocar sub-conta Revolut? Transacoes ja importadas continuam, novas viraio da sub-conta escolhida.")) return;
+    await fetch("/api/revolut/select-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bank_account_id: bankAccountId, revolut_account_id: null }),
+    });
     loadCredentials();
   }
 
@@ -239,14 +261,11 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                   {isReady && (
                     <>
                       <span className="badge-success">Conectado</span>
-                      <button
-                        onClick={() => syncAccount(acc.id)}
-                        disabled={syncingId === acc.id}
-                        className="btn-primary text-xs inline-flex items-center gap-1"
-                      >
-                        {syncingId === acc.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        Sync
-                      </button>
+                      <SyncMenu
+                        bankAccountId={acc.id}
+                        syncing={syncingId === acc.id}
+                        onSync={(mode) => syncAccount(acc.id, mode)}
+                      />
                       <button
                         onClick={() => disconnect(acc.id)}
                         className="text-red-400 hover:text-red-600 p-1"
@@ -321,13 +340,19 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                     <div>
                       <span className="text-slate-500">Sub-conta Revolut:</span>{" "}
                       <code className="text-slate-800">{creds.revolut_account_id?.slice(0, 8)}...</code>
+                      <button
+                        onClick={() => clearSubAccount(acc.id)}
+                        className="ml-2 text-brand-600 hover:underline text-[10px]"
+                      >
+                        trocar
+                      </button>
                     </div>
                     <div>
                       <span className="text-slate-500">Ultimo sync:</span>{" "}
                       <span>{creds.last_sync_at ? formatDateTime(creds.last_sync_at) : "Nunca"}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500">Transacoes:</span>{" "}
+                      <span className="text-slate-500">Transacoes (ultimo sync):</span>{" "}
                       <strong>{creds.last_sync_count ?? "-"}</strong>
                     </div>
                   </div>
@@ -347,9 +372,24 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                           : "bg-green-50 text-green-800"
                       }`}
                     >
-                      {syncResult.result.error
-                        ? `Erro: ${syncResult.result.error}`
-                        : `Sync OK: ${syncResult.result.imported} importadas, ${syncResult.result.duplicates_skipped} duplicadas, ${syncResult.result.needs_review} para revisar`}
+                      {syncResult.result.error ? (
+                        `Erro: ${syncResult.result.error}`
+                      ) : (
+                        <>
+                          <div>
+                            Sync OK: {syncResult.result.imported} importadas,{" "}
+                            {syncResult.result.duplicates_skipped} duplicadas,{" "}
+                            {syncResult.result.needs_review} para revisar
+                          </div>
+                          <div className="text-[10px] text-green-700 mt-1">
+                            {syncResult.result.total_fetched} transacoes lidas da Revolut ·{" "}
+                            {syncResult.result.legs_for_account} legs desta sub-conta
+                            {syncResult.result.pnl_months_regenerated?.length > 0 && (
+                              <> · P&L regenerado: {syncResult.result.pnl_months_regenerated.length} meses</>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -384,6 +424,63 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SyncMenu({
+  bankAccountId,
+  syncing,
+  onSync,
+}: {
+  bankAccountId: string;
+  syncing: boolean;
+  onSync: (mode: "30" | "90" | "all") => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        disabled={syncing}
+        className="btn-primary text-xs inline-flex items-center gap-1"
+      >
+        {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+        Sync
+        <ChevronDown size={10} className={open ? "rotate-180" : ""} />
+      </button>
+      {open && !syncing && (
+        <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-lg w-44 py-1 text-xs">
+          <button
+            onClick={() => {
+              setOpen(false);
+              onSync("30");
+            }}
+            className="w-full text-left px-3 py-2 hover:bg-slate-50"
+          >
+            Ultimos 30 dias
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onSync("90");
+            }}
+            className="w-full text-left px-3 py-2 hover:bg-slate-50"
+          >
+            Ultimos 90 dias
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onSync("all");
+            }}
+            className="w-full text-left px-3 py-2 hover:bg-slate-50 border-t border-slate-100"
+          >
+            Historico completo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -430,7 +527,15 @@ function SubAccountPicker({
       .finally(() => setLoading(false));
   }, [bankAccountId]);
 
-  async function pick(revolutAccountId: string) {
+  async function pick(revolutAccountId: string, currency: string) {
+    if (currency.toUpperCase() !== bankCurrency.toUpperCase()) {
+      const ok = confirm(
+        `ATENCAO: Sub-conta Revolut esta em ${currency}, mas esta bank_account local esta em ${bankCurrency}.\n\n` +
+          `Importar transacoes em moeda diferente vai gerar saldos errados (somariamos valores em moedas diferentes).\n\n` +
+          `Tem certeza que quer continuar?`
+      );
+      if (!ok) return;
+    }
     setSelecting(revolutAccountId);
     setError(null);
     const res = await fetch("/api/revolut/select-account", {
@@ -477,7 +582,7 @@ function SubAccountPicker({
             return (
               <button
                 key={a.id}
-                onClick={() => pick(a.id)}
+                onClick={() => pick(a.id, a.currency)}
                 disabled={selecting !== null}
                 className={`w-full text-left rounded-lg p-3 border transition flex items-center justify-between gap-2 ${
                   matchesCurrency

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { exchangeCodeForTokens } from "@/lib/revolut/auth";
+import { exchangeCodeForTokens, getApiBase } from "@/lib/revolut/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +65,7 @@ export async function GET(request: Request) {
         sandbox: c.sandbox,
       });
     } catch (err: any) {
+      const errMsg = `Falha ao trocar code: ${err.message}`;
       // Log detalhado pra diagnostico
       console.error("Revolut code exchange error:", {
         error: err.message,
@@ -74,9 +75,15 @@ export async function GET(request: Request) {
         private_key_last_30: c.private_key?.slice(-30),
         sandbox: c.sandbox,
       });
-      return NextResponse.redirect(
-        `${redirectTo}?error=${encodeURIComponent("Falha ao trocar code: " + err.message)}`
-      );
+      // Persistir o erro pra UI mostrar de forma persistente (nao so na URL)
+      await sb
+        .from("revolut_credentials")
+        .update({
+          last_sync_error: errMsg,
+          last_sync_at: new Date().toISOString(),
+        })
+        .eq("bank_account_id", bank_account_id);
+      return NextResponse.redirect(`${redirectTo}?error=${encodeURIComponent(errMsg)}`);
     }
 
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
@@ -89,6 +96,7 @@ export async function GET(request: Request) {
         access_token_expires_at: expiresAt,
         refresh_token: tokenData.refresh_token,
         active: true,
+        last_sync_error: null,
         updated_at: new Date().toISOString(),
       })
       .eq("bank_account_id", bank_account_id);
@@ -102,7 +110,46 @@ export async function GET(request: Request) {
     // Limpar state
     await sb.from("revolut_oauth_state").delete().eq("state", state);
 
-    return NextResponse.redirect(`${redirectTo}?success=connected&account=${bank_account_id}`);
+    // Tentar auto-selecionar sub-conta:
+    //  - se so tem 1, seleciona ela
+    //  - se tem N e uma bate com a moeda do bank_account, seleciona ela
+    let autoPickedAccount: string | null = null;
+    try {
+      const accountsRes = await fetch(`${getApiBase(c.sandbox)}/accounts`, {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      if (accountsRes.ok) {
+        const accs: Array<{ id: string; currency: string; state: string }> = await accountsRes.json();
+        const active = accs.filter((a) => a.state === "active");
+        const { data: bankAccount } = await sb
+          .from("bank_accounts")
+          .select("currency")
+          .eq("id", bank_account_id)
+          .single();
+        const targetCurrency = (bankAccount as any)?.currency?.toUpperCase();
+
+        if (active.length === 1) {
+          autoPickedAccount = active[0].id;
+        } else if (targetCurrency) {
+          const matches = active.filter((a) => a.currency.toUpperCase() === targetCurrency);
+          if (matches.length === 1) {
+            autoPickedAccount = matches[0].id;
+          }
+        }
+
+        if (autoPickedAccount) {
+          await sb
+            .from("revolut_credentials")
+            .update({ revolut_account_id: autoPickedAccount, updated_at: new Date().toISOString() })
+            .eq("bank_account_id", bank_account_id);
+        }
+      }
+    } catch {
+      // nao critico — usuario pode escolher manualmente
+    }
+
+    const successFlag = autoPickedAccount ? "connected_ready" : "connected";
+    return NextResponse.redirect(`${redirectTo}?success=${successFlag}&account=${bank_account_id}`);
   } catch (e: any) {
     return NextResponse.redirect(`${redirectTo}?error=${encodeURIComponent(e.message)}`);
   }

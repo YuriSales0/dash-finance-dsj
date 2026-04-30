@@ -4,12 +4,23 @@ import { createServerClient } from "@/lib/supabase/server";
 import { classify } from "@/lib/import/classify";
 import type { EntityId } from "@/types/database";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
+
+interface SyncBody {
+  bank_account_id: string;
+  // Modos:
+  //  - days: ultimos N dias (default 30)
+  //  - from_date: data inicial absoluta (YYYY-MM-DD)
+  //  - all: true → tudo desde o inicio (sem from)
+  days?: number;
+  from_date?: string;
+  all?: boolean;
+}
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { bank_account_id, days = 30 } = body;
+    const body: SyncBody = await request.json();
+    const { bank_account_id, days = 30, from_date, all } = body;
 
     if (!bank_account_id) {
       return NextResponse.json({ error: "bank_account_id obrigatorio" }, { status: 400 });
@@ -64,14 +75,21 @@ export async function POST(request: Request) {
       .single();
     const entityName = (entityRow as any)?.name || account.entity_id;
 
-    // Pegar transacoes
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - days);
-    const fromStr = fromDate.toISOString().slice(0, 10);
+    // Pegar transacoes — modos: all > from_date > days
+    let fromStr: string | undefined;
+    if (all) {
+      fromStr = undefined; // sem filtro = desde o inicio da conta
+    } else if (from_date) {
+      fromStr = from_date;
+    } else {
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+      fromStr = fromDate.toISOString().slice(0, 10);
+    }
 
     let revolutTxs;
     try {
-      revolutTxs = await listTransactions(bank_account_id, { from: fromStr, count: 1000 });
+      revolutTxs = await listTransactions(bank_account_id, { from: fromStr });
     } catch (err: any) {
       // Salvar erro
       await sb.from("revolut_credentials")

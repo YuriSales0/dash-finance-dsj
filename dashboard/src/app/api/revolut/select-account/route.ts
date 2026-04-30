@@ -11,18 +11,16 @@ export async function POST(request: Request) {
   try {
     const { bank_account_id, revolut_account_id } = await request.json();
 
-    if (!bank_account_id || !revolut_account_id) {
-      return NextResponse.json(
-        { error: "bank_account_id e revolut_account_id obrigatorios" },
-        { status: 400 }
-      );
+    if (!bank_account_id) {
+      return NextResponse.json({ error: "bank_account_id obrigatorio" }, { status: 400 });
     }
 
+    // revolut_account_id null = limpar (volta ao estado de "selecione a sub-conta")
     const sb = createServerClient();
     const { error } = await sb
       .from("revolut_credentials")
       .update({
-        revolut_account_id,
+        revolut_account_id: revolut_account_id || null,
         updated_at: new Date().toISOString(),
       })
       .eq("bank_account_id", bank_account_id);
