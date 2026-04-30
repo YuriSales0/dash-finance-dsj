@@ -568,7 +568,9 @@ export function SettingsForms({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Saldo atual</label>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Saldo de abertura (dia 0)
+            </label>
             <input
               type="number"
               step="0.01"

@@ -387,14 +387,16 @@ class SupabaseRepository implements Repository {
       return data as BankAccount;
     }
 
+    const initialBalance = d.balance_current || 0;
     const { data, error } = await this.db.from("bank_accounts").insert({
       id: baseId,
       entity_id: d.entity_id,
       bank_name: d.bank_name,
       currency: d.currency || "USD",
       api_provider: d.api_provider || "manual",
-      balance_current: d.balance_current || 0,
-      balance_available: d.balance_available || 0,
+      balance_current: initialBalance,
+      balance_available: initialBalance,
+      opening_balance: initialBalance, // valor inicial = saldo dia 0
       manual_balance: true,
     }).select().single();
     if (error) throw error;
