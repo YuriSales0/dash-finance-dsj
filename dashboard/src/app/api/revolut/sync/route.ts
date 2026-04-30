@@ -194,10 +194,28 @@ export async function POST(request: Request) {
       })
       .eq("bank_account_id", bank_account_id);
 
-    // Atualizar last_synced_at da conta (saldo permanece manual)
+    // Atualizar last_synced_at + saldo incremental
+    // Saldo continua "manual" como ponto de partida; cada sync soma
+    // o liquido apenas das NOVAS transacoes (newOnes) — duplicatas nao contam
+    let balanceDelta = 0;
+    let newBalance: number | null = null;
     if (imported > 0 || normalized.length > 0) {
+      const { data: accBefore } = await sb
+        .from("bank_accounts")
+        .select("balance_current")
+        .eq("id", bank_account_id)
+        .single();
+      const before = Number((accBefore as any)?.balance_current ?? 0);
+
+      balanceDelta = newOnes.reduce((acc, tx) => acc + Number(tx.amount_original || 0), 0);
+      balanceDelta = Math.round(balanceDelta * 100) / 100;
+      newBalance = Math.round((before + balanceDelta) * 100) / 100;
+
       await sb.from("bank_accounts")
-        .update({ last_synced_at: new Date().toISOString() })
+        .update({
+          last_synced_at: new Date().toISOString(),
+          balance_current: newBalance,
+        })
         .eq("id", bank_account_id);
     }
 
@@ -240,6 +258,8 @@ export async function POST(request: Request) {
       needs_review: needsReviewCount,
       pnl_months_regenerated: pnlGenerated,
       intercompany_detected: intercompanyDetected,
+      balance_delta: balanceDelta,
+      new_balance: newBalance,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });

@@ -204,10 +204,31 @@ export async function POST(request: Request) {
       }
     }
 
-    // Apenas atualizar last_synced_at — saldo permanece manual
+    // Atualizar last_synced_at + ajustar saldo incremental:
+    //  - saldo permanece "manual" (user define o ponto de partida em Bancos)
+    //  - cada import incremental SOMA o liquido das NOVAS transacoes
+    //    (newOnes ja exclui duplicatas via dedup intra-CSV + inter-CSV)
+    let balanceDelta = 0;
+    let newBalance: number | null = null;
     if (imported > 0 || normalized.length > 0) {
+      // Buscar saldo atual antes
+      const { data: accBefore } = await sb
+        .from("bank_accounts")
+        .select("balance_current")
+        .eq("id", bank_account_id)
+        .single();
+      const before = Number((accBefore as any)?.balance_current ?? 0);
+
+      // Soma do liquido das transacoes que efetivamente foram inseridas (newOnes)
+      // (mesmo se algum erro 23505 caiu, contamos as que estao no array — sao as alvos do upsert)
+      balanceDelta = newOnes.reduce((acc, tx) => acc + Number(tx.amount_original || 0), 0);
+      // Arredondar pra 2 casas pra evitar drift de floating point
+      balanceDelta = Math.round(balanceDelta * 100) / 100;
+      newBalance = Math.round((before + balanceDelta) * 100) / 100;
+
       await sb.from("bank_accounts").update({
         last_synced_at: new Date().toISOString(),
+        balance_current: newBalance,
       }).eq("id", bank_account_id);
     }
 
@@ -264,6 +285,8 @@ export async function POST(request: Request) {
       needs_review: needsReviewCount,
       pnl_months_regenerated: pnlGenerated,
       intercompany_detected: intercompanyDetected,
+      balance_delta: balanceDelta,
+      new_balance: newBalance,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });

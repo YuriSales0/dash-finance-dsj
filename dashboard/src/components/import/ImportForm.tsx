@@ -36,6 +36,8 @@ interface ImportResult {
   imported: number;
   skipped_duplicates: number;
   needs_review: number;
+  balance_delta?: number;
+  new_balance?: number;
 }
 
 interface FxRates {
@@ -413,6 +415,26 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
                   <strong>{result.needs_review}</strong>
                 </div>
               </div>
+              {(result.balance_delta !== undefined && result.balance_delta !== 0) && (
+                <div className="mt-3 pt-3 border-t border-green-200 text-sm">
+                  <p className="text-green-900">
+                    Saldo ajustado:{" "}
+                    <strong className={result.balance_delta >= 0 ? "text-green-700" : "text-red-700"}>
+                      {result.balance_delta >= 0 ? "+" : ""}
+                      {formatCurrency(result.balance_delta, currency)}
+                    </strong>
+                    {result.new_balance !== undefined && (
+                      <>
+                        {" "}→ novo saldo:{" "}
+                        <strong>{formatCurrency(result.new_balance, currency)}</strong>
+                      </>
+                    )}
+                  </p>
+                  <p className="text-xs text-green-700 mt-1">
+                    Apenas as {result.imported} transacoes novas foram somadas. Duplicatas nao contam.
+                  </p>
+                </div>
+              )}
               {result.needs_review > 0 && (
                 <a href="/admin/transactions" className="text-sm text-amber-900 underline mt-2 inline-block">
                   Ir para revisao &rarr;
