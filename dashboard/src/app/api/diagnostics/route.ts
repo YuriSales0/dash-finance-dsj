@@ -11,21 +11,40 @@ export async function GET() {
 
   const sb = createServerClient();
 
-  // Contagem por conta
+  // Contagem por conta + balance breakdown
   const { data: accounts } = await sb
     .from("bank_accounts")
-    .select("id, bank_name, currency, entity_id, last_synced_at")
+    .select("id, bank_name, currency, entity_id, last_synced_at, balance_current, opening_balance")
     .eq("active", true);
 
   const accountStats = await Promise.all(
     ((accounts as any[]) || []).map(async (a) => {
-      const { count } = await sb
+      const { count, data: txs } = await sb
         .from("transactions")
-        .select("*", { count: "exact", head: true })
+        .select("amount_original", { count: "exact" })
         .eq("bank_account_id", a.id);
+
+      const txList = (txs as any[]) || [];
+      const inflowsSum = txList
+        .filter((t) => Number(t.amount_original) > 0)
+        .reduce((s, t) => s + Number(t.amount_original), 0);
+      const outflowsSum = txList
+        .filter((t) => Number(t.amount_original) < 0)
+        .reduce((s, t) => s + Number(t.amount_original), 0);
+      const netSum = inflowsSum + outflowsSum;
+      const opening = Number(a.opening_balance) || 0;
+      const computed = opening + netSum;
+
       return {
         ...a,
         transaction_count: count,
+        opening_balance: opening,
+        sum_inflows: Math.round(inflowsSum * 100) / 100,
+        sum_outflows: Math.round(outflowsSum * 100) / 100,
+        net: Math.round(netSum * 100) / 100,
+        computed_balance: Math.round(computed * 100) / 100,
+        stored_balance: Number(a.balance_current),
+        match: Math.abs(computed - Number(a.balance_current)) < 0.01,
       };
     })
   );
