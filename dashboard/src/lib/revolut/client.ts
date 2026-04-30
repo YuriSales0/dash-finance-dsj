@@ -42,7 +42,22 @@ export async function getValidAccessToken(bankAccountId: string): Promise<{
     };
   }
 
-  // Refresh
+  // Tentar refresh — so funciona se temos refresh_token
+  if (!creds.refresh_token) {
+    if (creds.access_token) {
+      // Sem refresh_token mas com access_token (possivelmente expirado) — tenta usar assim mesmo
+      // Revolut retornara 401 se expirou, que sera capturado pelo caller
+      return {
+        token: creds.access_token,
+        apiBase: getApiBase(creds.sandbox),
+        credentials: creds,
+      };
+    }
+    throw new Error(
+      "Token expirado e sem refresh_token. Re-autorize no Revolut (Configuracoes → Integracoes → Autorizar)."
+    );
+  }
+
   const newToken = await refreshAccessToken({
     client_id: creds.client_id,
     issuer: creds.issuer,

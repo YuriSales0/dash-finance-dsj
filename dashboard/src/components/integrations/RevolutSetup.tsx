@@ -245,8 +245,8 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
         {accounts.map((acc) => {
           const creds = credentials.find((c) => c.bank_account_id === acc.id);
           const isWizardOpen = showWizard === acc.id;
-          const isDraft = creds && !creds.has_refresh_token;
-          const isAuthorized = creds && creds.has_refresh_token && creds.active;
+          const isDraft = creds && !creds.active;
+          const isAuthorized = creds && creds.active;
           const needsAccountPick = isAuthorized && !creds.revolut_account_id;
           const isReady = isAuthorized && !!creds.revolut_account_id;
 
