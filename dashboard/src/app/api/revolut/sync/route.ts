@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { listTransactions, listAccounts } from "@/lib/revolut/client";
+import { listTransactions } from "@/lib/revolut/client";
 import { createServerClient } from "@/lib/supabase/server";
 import { classify } from "@/lib/import/classify";
-import { convertToUsd } from "@/lib/fx/rates";
-import type { EntityId, Transaction } from "@/types/database";
+import type { EntityId } from "@/types/database";
 
 export const maxDuration = 60;
 
@@ -54,20 +53,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: err.message }, { status: 500 });
     }
 
-    // Atualizar saldo
-    try {
-      const accs = await listAccounts(bank_account_id);
-      const matchingAccount = accs[0];
-      if (matchingAccount) {
-        await sb.from("bank_accounts").update({
-          balance_current: matchingAccount.balance,
-          balance_available: matchingAccount.balance,
-          last_synced_at: new Date().toISOString(),
-        }).eq("id", bank_account_id);
-      }
-    } catch {
-      // nao critico
-    }
+    // Saldo permanece manual — apenas atualizar last_synced_at no fim
 
     // Normalizar
     const normalized = revolutTxs
@@ -87,20 +73,11 @@ export async function POST(request: Request) {
             counterparty,
             amount_original: leg.amount,
             currency_original: leg.currency,
-            amount_usd: leg.amount, // sera convertido abaixo
+            amount_usd: leg.amount, // sem conversao — mantemos no original
             fx_rate: 1,
           };
         })
       );
-
-    // Converter para USD se necessario
-    for (const tx of normalized) {
-      if (tx.currency_original !== "USD") {
-        const conv = await convertToUsd(tx.amount_original, tx.currency_original);
-        tx.amount_usd = conv.amount_usd;
-        tx.fx_rate = conv.fx_rate;
-      }
-    }
 
     // Dedup
     const externalIds = normalized.map((t) => t.external_id);
@@ -152,6 +129,13 @@ export async function POST(request: Request) {
         last_sync_error: null,
       })
       .eq("bank_account_id", bank_account_id);
+
+    // Atualizar last_synced_at da conta (saldo permanece manual)
+    if (imported > 0 || normalized.length > 0) {
+      await sb.from("bank_accounts")
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq("id", bank_account_id);
+    }
 
     return NextResponse.json({
       ok: true,
