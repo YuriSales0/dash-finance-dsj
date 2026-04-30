@@ -2,7 +2,6 @@ import { Header } from "@/components/layout/Header";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
-import { convertToUsd } from "@/lib/fx/rates";
 import { DebtForm } from "@/components/debts/DebtForm";
 import { CreditCard, AlertTriangle, Calendar } from "lucide-react";
 
@@ -13,16 +12,13 @@ export const fetchCache = "force-no-store";
 export default async function DebtsPage() {
   const debts = await repository.getDebts();
 
-  // Total a pagar convertido para USD
-  let totalPendingUsd = 0;
+  // Total a pagar por moeda (sem conversao)
+  const pendingByCurrency: Record<string, number> = {};
   for (const d of debts) {
     if (d.status !== "pending" && d.status !== "partial") continue;
     const remaining = d.amount_total - d.amount_paid;
     if (remaining <= 0) continue;
-    const usd = d.currency === "USD"
-      ? remaining
-      : (await convertToUsd(remaining, d.currency)).amount_usd;
-    totalPendingUsd += usd;
+    pendingByCurrency[d.currency] = (pendingByCurrency[d.currency] || 0) + remaining;
   }
 
   const overdueCount = debts.filter(
@@ -43,9 +39,14 @@ export default async function DebtsPage() {
             <div className="flex items-center gap-3">
               <div className="p-2 bg-red-50 rounded-lg"><CreditCard className="text-red-600" size={20} /></div>
               <div>
-                <p className="text-xs text-slate-500">A pagar (USD)</p>
-                <p className="text-xl font-bold">{formatCurrency(totalPendingUsd)}</p>
-                <p className="text-[10px] text-slate-400">convertido pela cotacao do dia</p>
+                <p className="text-xs text-slate-500">A pagar</p>
+                {Object.entries(pendingByCurrency).length === 0 ? (
+                  <p className="text-xl font-bold">$0.00</p>
+                ) : (
+                  Object.entries(pendingByCurrency).map(([cur, val]) => (
+                    <p key={cur} className="text-lg font-bold">{formatCurrency(val, cur)}</p>
+                  ))
+                )}
               </div>
             </div>
           </div>

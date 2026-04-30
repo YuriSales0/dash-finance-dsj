@@ -1,7 +1,6 @@
 import { Header } from "@/components/layout/Header";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency } from "@/lib/format";
-import { convertToUsd } from "@/lib/fx/rates";
 import { ReceivableForm } from "@/components/receivables/ReceivableForm";
 import { ReceivablesTable } from "@/components/receivables/ReceivablesTable";
 import { FileText, AlertCircle, Banknote } from "lucide-react";
@@ -13,16 +12,13 @@ export const fetchCache = "force-no-store";
 export default async function ReceivablesPage() {
   const receivables = await repository.getReceivables();
 
-  // Total a receber convertido para USD
-  let totalPendingUsd = 0;
+  // Total a receber por moeda (sem conversao)
+  const pendingByCurrency: Record<string, number> = {};
   for (const r of receivables) {
     if (r.status !== "pending" && r.status !== "partial") continue;
     const remaining = r.amount_total - r.amount_received;
     if (remaining <= 0) continue;
-    const usd = r.currency === "USD"
-      ? remaining
-      : (await convertToUsd(remaining, r.currency)).amount_usd;
-    totalPendingUsd += usd;
+    pendingByCurrency[r.currency] = (pendingByCurrency[r.currency] || 0) + remaining;
   }
 
   const overdueCount = receivables.filter(
@@ -42,9 +38,14 @@ export default async function ReceivablesPage() {
             <div className="flex items-center gap-3">
               <div className="p-2 bg-green-50 rounded-lg"><FileText className="text-green-600" size={20} /></div>
               <div>
-                <p className="text-xs text-slate-500">A receber (USD)</p>
-                <p className="text-xl font-bold">{formatCurrency(totalPendingUsd)}</p>
-                <p className="text-[10px] text-slate-400">convertido pela cotacao do dia</p>
+                <p className="text-xs text-slate-500">A receber</p>
+                {Object.entries(pendingByCurrency).length === 0 ? (
+                  <p className="text-xl font-bold">$0.00</p>
+                ) : (
+                  Object.entries(pendingByCurrency).map(([cur, val]) => (
+                    <p key={cur} className="text-lg font-bold">{formatCurrency(val, cur)}</p>
+                  ))
+                )}
               </div>
             </div>
           </div>
