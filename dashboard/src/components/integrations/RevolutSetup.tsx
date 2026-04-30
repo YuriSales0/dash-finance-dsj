@@ -35,6 +35,15 @@ interface CredentialStatus {
   last_sync_error: string | null;
   active: boolean;
   has_refresh_token: boolean;
+  revolut_account_id: string | null;
+}
+
+interface RevolutSubAccount {
+  id: string;
+  name: string;
+  currency: string;
+  balance: number;
+  state: string;
 }
 
 const REDIRECT_URI = typeof window !== "undefined"
@@ -215,7 +224,9 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
           const creds = credentials.find((c) => c.bank_account_id === acc.id);
           const isWizardOpen = showWizard === acc.id;
           const isDraft = creds && !creds.has_refresh_token;
-          const isActive = creds && creds.has_refresh_token && creds.active;
+          const isAuthorized = creds && creds.has_refresh_token && creds.active;
+          const needsAccountPick = isAuthorized && !creds.revolut_account_id;
+          const isReady = isAuthorized && !!creds.revolut_account_id;
 
           return (
             <div key={acc.id} className="card">
@@ -225,7 +236,7 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                   <p className="text-xs text-slate-500">{acc.bank_name} ({acc.currency})</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isActive && (
+                  {isReady && (
                     <>
                       <span className="badge-success">Conectado</span>
                       <button
@@ -236,6 +247,18 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                         {syncingId === acc.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                         Sync
                       </button>
+                      <button
+                        onClick={() => disconnect(acc.id)}
+                        className="text-red-400 hover:text-red-600 p-1"
+                        title="Desconectar"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                  {needsAccountPick && (
+                    <>
+                      <span className="badge-warning">Selecione a sub-conta</span>
                       <button
                         onClick={() => disconnect(acc.id)}
                         className="text-red-400 hover:text-red-600 p-1"
@@ -282,7 +305,7 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                 </div>
               </div>
 
-              {isActive && (
+              {isReady && (
                 <div className="card-body space-y-2 text-xs">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -294,6 +317,10 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                       <span className={creds.sandbox ? "text-amber-600" : "text-green-600"}>
                         {creds.sandbox ? "Sandbox" : "Producao"}
                       </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Sub-conta Revolut:</span>{" "}
+                      <code className="text-slate-800">{creds.revolut_account_id?.slice(0, 8)}...</code>
                     </div>
                     <div>
                       <span className="text-slate-500">Ultimo sync:</span>{" "}
@@ -326,6 +353,14 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                     </div>
                   )}
                 </div>
+              )}
+
+              {needsAccountPick && (
+                <SubAccountPicker
+                  bankAccountId={acc.id}
+                  bankCurrency={acc.currency}
+                  onSelected={loadCredentials}
+                />
               )}
 
               {isDraft && (
@@ -363,6 +398,120 @@ function Step({ number, title, children }: { number: number; title: string; chil
         {title}
       </h4>
       <div className="mt-1 ml-7">{children}</div>
+    </div>
+  );
+}
+
+function SubAccountPicker({
+  bankAccountId,
+  bankCurrency,
+  onSelected,
+}: {
+  bankAccountId: string;
+  bankCurrency: string;
+  onSelected: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [accounts, setAccounts] = useState<RevolutSubAccount[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/revolut/accounts?bank_account_id=${encodeURIComponent(bankAccountId)}`)
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) {
+          setError(d.error || "Erro ao listar sub-contas");
+        } else {
+          setAccounts(d.accounts || []);
+        }
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [bankAccountId]);
+
+  async function pick(revolutAccountId: string) {
+    setSelecting(revolutAccountId);
+    setError(null);
+    const res = await fetch("/api/revolut/select-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bank_account_id: bankAccountId, revolut_account_id: revolutAccountId }),
+    });
+    setSelecting(null);
+    if (!res.ok) {
+      const d = await res.json();
+      setError(d.error || "Erro");
+      return;
+    }
+    onSelected();
+  }
+
+  return (
+    <div className="card-body bg-amber-50 border-t border-amber-200 space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-amber-900">Selecione a sub-conta Revolut</p>
+        <p className="text-xs text-amber-800 mt-1">
+          O Revolut Business retorna varias sub-contas (uma por moeda). Escolha qual sub-conta corresponde
+          a esta conta local ({bankCurrency}). Apenas transacoes desta sub-conta serao importadas.
+        </p>
+      </div>
+
+      {loading && (
+        <div className="text-xs text-slate-600 flex items-center gap-2">
+          <Loader2 size={14} className="animate-spin" /> Carregando sub-contas...
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 text-red-700 rounded p-2 text-xs flex items-start gap-2">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {!loading && accounts.length > 0 && (
+        <div className="space-y-2">
+          {accounts.map((a) => {
+            const matchesCurrency = a.currency.toUpperCase() === bankCurrency.toUpperCase();
+            return (
+              <button
+                key={a.id}
+                onClick={() => pick(a.id)}
+                disabled={selecting !== null}
+                className={`w-full text-left rounded-lg p-3 border transition flex items-center justify-between gap-2 ${
+                  matchesCurrency
+                    ? "bg-white border-amber-300 hover:border-brand-500"
+                    : "bg-slate-50 border-slate-200 hover:border-slate-400"
+                } disabled:opacity-50`}
+              >
+                <div>
+                  <div className="text-sm font-medium">
+                    {a.name || `${a.currency} pocket`}{" "}
+                    {matchesCurrency && (
+                      <span className="ml-1 text-[10px] bg-amber-200 text-amber-900 px-1 rounded">
+                        moeda compativel
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {a.currency} · saldo {a.balance.toLocaleString()} · <code>{a.id.slice(0, 8)}...</code>
+                  </div>
+                </div>
+                {selecting === a.id ? (
+                  <Loader2 size={16} className="animate-spin text-brand-600" />
+                ) : (
+                  <CheckCircle size={16} className="text-slate-300" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {!loading && accounts.length === 0 && !error && (
+        <p className="text-xs text-slate-600">Nenhuma sub-conta disponivel.</p>
+      )}
     </div>
   );
 }

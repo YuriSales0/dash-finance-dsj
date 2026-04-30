@@ -113,7 +113,7 @@ export async function GET() {
   const { data } = await sb
     .from("revolut_credentials")
     .select(
-      "id, bank_account_id, client_id, issuer, sandbox, last_sync_at, last_sync_count, last_sync_error, active, access_token_expires_at, refresh_token"
+      "id, bank_account_id, client_id, issuer, sandbox, last_sync_at, last_sync_count, last_sync_error, active, access_token_expires_at, refresh_token, revolut_account_id"
     );
   const masked = (data || []).map((c: any) => ({
     ...c,
