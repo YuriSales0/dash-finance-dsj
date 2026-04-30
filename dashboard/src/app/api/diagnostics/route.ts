@@ -62,6 +62,25 @@ export async function GET() {
     .order("month", { ascending: false })
     .limit(6);
 
+  // P&L por empresa
+  const { data: entitiesList } = await sb.from("entities").select("id, name");
+  const pnlByEntity: any[] = [];
+  for (const e of (entitiesList as any[]) || []) {
+    const { data: rows } = await sb
+      .from("monthly_pnl")
+      .select("month, revenue, total_costs, net_profit, cost_other")
+      .eq("entity_id", e.id)
+      .order("month", { ascending: false })
+      .limit(3);
+    pnlByEntity.push({
+      entity_id: e.id,
+      entity_name: e.name,
+      months_with_data: ((rows as any[]) || []).filter((r) => r.revenue > 0 || r.total_costs > 0).length,
+      total_rows: (rows as any[])?.length || 0,
+      recent: rows,
+    });
+  }
+
   // Recebiveis
   const { count: receivablesCount } = await sb
     .from("receivables")
@@ -89,6 +108,7 @@ export async function GET() {
     recent_transactions: recent,
     recent_imports: imports,
     consolidated_pnl_recent: pnl,
+    pnl_by_entity: pnlByEntity,
     total_receivables: receivablesCount,
     recent_receivables: recentReceivables,
     total_debts: debtsCount,
