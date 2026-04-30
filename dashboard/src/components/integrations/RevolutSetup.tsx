@@ -408,6 +408,7 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                   <p className="text-xs text-amber-800">
                     Credenciais salvas. Clique em <strong>Autorizar</strong> acima para abrir o Revolut e completar a conexao.
                   </p>
+                  <JwtTester bankAccountId={acc.id} />
                   <KeyPairVerifier bankAccountId={acc.id} />
                 </div>
               )}
@@ -425,6 +426,69 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function JwtTester({ bankAccountId }: { bankAccountId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function test() {
+    setLoading(true);
+    setError(null);
+    setData(null);
+    const res = await fetch("/api/revolut/test-jwt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bank_account_id: bankAccountId }),
+    });
+    const d = await res.json();
+    setLoading(false);
+    if (!res.ok) {
+      setError(d.error || "Erro");
+      return;
+    }
+    setData(d);
+  }
+
+  const diagColor =
+    data?.diagnosis === "JWT_OK_CODE_INVALID"
+      ? "bg-green-50 text-green-800 border-green-200"
+      : data?.diagnosis === "CERT_MISMATCH_ON_REVOLUT"
+      ? "bg-red-50 text-red-800 border-red-200"
+      : "bg-amber-50 text-amber-800 border-amber-200";
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={test}
+        disabled={loading}
+        className="btn-secondary text-xs inline-flex items-center gap-2"
+      >
+        {loading && <Loader2 size={12} className="animate-spin" />}
+        Testar JWT contra Revolut (sem precisar autorizar)
+      </button>
+
+      {error && (
+        <div className="bg-red-50 text-red-700 rounded p-2 text-xs">
+          <AlertTriangle size={12} className="inline mr-1" /> {error}
+        </div>
+      )}
+
+      {data && (
+        <div className={`border rounded p-3 text-xs space-y-2 ${diagColor}`}>
+          <p className="font-semibold">Diagnostico: {data.diagnosis}</p>
+          <p>{data.advice}</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer">Detalhes brutos</summary>
+            <pre className="mt-1 text-[10px] bg-white/50 p-2 rounded overflow-x-auto">
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
     </div>
   );
 }
