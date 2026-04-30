@@ -27,9 +27,18 @@ export function normalizePrivateKey(pem: string): string {
     keyType = match[1].replace(/\s+/g, " ").toUpperCase();
     body = match[2].replace(/[^A-Za-z0-9+/=]/g, "");
   } else {
-    // FALLBACK: se markers sumiram (DB stripping?), e o conteudo eh base64,
-    // assumir PKCS#8 (mais comum) e tentar reconstruir
-    const cleaned = normalized.replace(/[^A-Za-z0-9+/=]/g, "");
+    // FALLBACK: BEGIN ou END (ou ambos) ausentes/quebrados.
+    // Estrategia: remover qualquer texto de marker (BEGIN/END + tipo) ANTES
+    // de extrair base64, senao as letras "ENDPRIVATEKEY" contaminam o body.
+    let stripped = normalized
+      .replace(
+        /-{2,}\s*(BEGIN|END)\s+(RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)\s*-{2,}/gi,
+        ""
+      )
+      // Tambem remover variantes onde apenas parte dos dashes ou markers sobrou
+      .replace(/(BEGIN|END)\s+(RSA\s+PRIVATE\s+KEY|PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY)/gi, "");
+
+    const cleaned = stripped.replace(/[^A-Za-z0-9+/=]/g, "");
     if (cleaned.length >= 600 && /^[A-Za-z0-9+/=]+$/.test(cleaned)) {
       keyType = "PRIVATE KEY";
       body = cleaned;
