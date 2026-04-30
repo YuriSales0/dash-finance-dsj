@@ -47,9 +47,11 @@ export async function POST(request: Request) {
       let q = sb
         .from("transactions")
         .select("id, timestamp")
-        .eq("bank_account_id", bank_account_id)
         .gt("amount_original", 0);
 
+      if (bank_account_id !== "all") {
+        q = q.eq("bank_account_id", bank_account_id);
+      }
       if (only_uncategorized) {
         q = q.or("category_id.is.null,needs_review.eq.true");
       }
@@ -85,9 +87,11 @@ export async function POST(request: Request) {
       let q = sb
         .from("transactions")
         .select("id, timestamp")
-        .eq("bank_account_id", bank_account_id)
         .lt("amount_original", 0);
 
+      if (bank_account_id !== "all") {
+        q = q.eq("bank_account_id", bank_account_id);
+      }
       if (only_uncategorized) {
         q = q.or("category_id.is.null,needs_review.eq.true");
       }

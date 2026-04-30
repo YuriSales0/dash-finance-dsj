@@ -555,6 +555,7 @@ function BulkClassifyModal({ accounts, onClose }: { accounts: BankAccount[]; onC
         <div>
           <label className="block text-xs font-medium text-slate-700 mb-1">Conta</label>
           <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <option value="all">📋 TODAS as contas</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {entityNames[a.entity_id] || a.entity_id} - {a.bank_name} ({a.currency})
