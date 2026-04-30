@@ -396,7 +396,6 @@ class SupabaseRepository implements Repository {
       api_provider: d.api_provider || "manual",
       balance_current: initialBalance,
       balance_available: initialBalance,
-      opening_balance: initialBalance, // valor inicial = saldo dia 0
       manual_balance: true,
     }).select().single();
     if (error) throw error;

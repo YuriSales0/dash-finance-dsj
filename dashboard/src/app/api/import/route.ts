@@ -204,22 +204,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Atualizar saldo da conta: soma de TODAS as transacoes da conta
-    // (predictable: balance sempre reflete o que esta no historico)
+    // Apenas atualizar last_synced_at — saldo permanece manual
     if (imported > 0 || normalized.length > 0) {
-      const { data: allTxs } = await sb
-        .from("transactions")
-        .select("amount_original")
-        .eq("bank_account_id", bank_account_id);
-
-      const sumAll = ((allTxs as any[]) || []).reduce(
-        (s, t) => s + Number(t.amount_original || 0),
-        0
-      );
-
       await sb.from("bank_accounts").update({
-        balance_current: sumAll,
-        balance_available: sumAll,
         last_synced_at: new Date().toISOString(),
       }).eq("id", bank_account_id);
     }

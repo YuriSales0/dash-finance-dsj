@@ -440,29 +440,6 @@ export function SettingsForms({
                       </button>
                     </div>
                     </div>
-                    {/* Opening balance: dinheiro que tinha na conta antes do CSV */}
-                    <div className="mt-2 flex items-center gap-2 text-xs">
-                      <span className="text-slate-500">Saldo de abertura:</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        defaultValue={acc.opening_balance || 0}
-                        onBlur={(e) => {
-                          const val = e.target.value;
-                          if (Number(val) !== (acc.opening_balance || 0)) {
-                            updateOpeningBalance(acc.id, val);
-                          }
-                        }}
-                        className="input text-xs py-1 px-2 w-32 font-mono"
-                        title="Saldo que ja existia antes do CSV. Sera somado as transacoes."
-                      />
-                      <span className="text-slate-400 text-[10px]">
-                        + transacoes = saldo atual
-                      </span>
-                      {loading === `open-${acc.id}` && (
-                        <Loader2 size={10} className="animate-spin text-slate-400" />
-                      )}
-                    </div>
                   </div>
                 ))}
               </div>
@@ -569,7 +546,7 @@ export function SettingsForms({
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
-              Saldo de abertura (dia 0)
+              Saldo atual
             </label>
             <input
               type="number"

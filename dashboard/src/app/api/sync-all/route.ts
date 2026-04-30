@@ -12,35 +12,8 @@ export async function POST() {
   const sb = createServerClient();
   const log: string[] = [];
 
-  // 1. Recalcular saldos das contas: opening_balance + sum(transactions)
-  try {
-    const { data: accounts } = await sb
-      .from("bank_accounts")
-      .select("id, currency, opening_balance")
-      .eq("active", true);
-
-    let updated = 0;
-    for (const acc of (accounts as any[]) || []) {
-      const { data: txs } = await sb
-        .from("transactions")
-        .select("amount_original")
-        .eq("bank_account_id", acc.id);
-      const sum = ((txs as any[]) || []).reduce(
-        (s, t) => s + Number(t.amount_original || 0),
-        0
-      );
-      const opening = Number(acc.opening_balance) || 0;
-      const newBalance = opening + sum;
-      await sb
-        .from("bank_accounts")
-        .update({ balance_current: newBalance, balance_available: newBalance })
-        .eq("id", acc.id);
-      updated++;
-    }
-    log.push(`Saldos recalculados: ${updated} contas (opening + transactions)`);
-  } catch (e: any) {
-    log.push(`Erro ao recalcular saldos: ${e.message}`);
-  }
+  // Saldos sao manuais — nao mais recalculados automaticamente
+  log.push("Saldos: nao alterados (gestao manual)");
 
   // 2. Detectar intercompany
   try {
