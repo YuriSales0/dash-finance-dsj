@@ -408,6 +408,11 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
                   <p className="text-xs text-amber-800">
                     Credenciais salvas. Clique em <strong>Autorizar</strong> acima para abrir o Revolut e completar a conexao.
                   </p>
+                  <ClientIdEditor
+                    bankAccountId={acc.id}
+                    currentClientId={creds.client_id}
+                    onSaved={loadCredentials}
+                  />
                   <JwtTester bankAccountId={acc.id} />
                   <KeyPairVerifier bankAccountId={acc.id} />
                 </div>
@@ -425,6 +430,99 @@ openssl req -new -x509 -key revolut_private.pem -out revolut_public.pem -days 36
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function ClientIdEditor({
+  bankAccountId,
+  currentClientId,
+  onSaved,
+}: {
+  bankAccountId: string;
+  currentClientId: string;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(currentClientId);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === currentClientId) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const res = await fetch("/api/revolut/credentials", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bank_account_id: bankAccountId, client_id: trimmed }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json();
+      setError(d.error || "Erro");
+      return;
+    }
+    setEditing(false);
+    onSaved();
+  }
+
+  if (!editing) {
+    return (
+      <div className="bg-white border border-amber-200 rounded p-2 text-xs flex items-center gap-2">
+        <span className="text-slate-600">Client ID atual:</span>
+        <code className="text-slate-800 break-all flex-1">{currentClientId}</code>
+        <button
+          onClick={() => {
+            setValue(currentClientId);
+            setEditing(true);
+          }}
+          className="text-brand-600 hover:underline shrink-0"
+        >
+          editar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-amber-300 rounded p-2 space-y-2">
+      <label className="text-xs text-slate-600">Novo Client ID (case-sensitive, sem espacos):</label>
+      <input
+        autoFocus
+        className="input font-mono text-xs"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="oid_xxxxxxxxxxxx"
+      />
+      {error && (
+        <div className="bg-red-50 text-red-700 rounded p-2 text-xs">
+          <AlertTriangle size={12} className="inline mr-1" /> {error}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="btn-primary text-xs inline-flex items-center gap-1"
+        >
+          {saving && <Loader2 size={12} className="animate-spin" />}
+          Salvar
+        </button>
+        <button
+          onClick={() => {
+            setEditing(false);
+            setError(null);
+          }}
+          className="btn-secondary text-xs"
+        >
+          Cancelar
+        </button>
       </div>
     </div>
   );

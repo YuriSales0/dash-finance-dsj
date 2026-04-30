@@ -129,3 +129,37 @@ export async function DELETE(request: Request) {
   await sb.from("revolut_credentials").delete().eq("bank_account_id", bank_account_id);
   return NextResponse.json({ ok: true });
 }
+
+// PATCH: atualiza apenas client_id e/ou issuer (sem mexer na private_key salva)
+// Util quando o user descobre que copiou o Client ID errado e nao quer
+// recomecar o setup do zero.
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { bank_account_id, client_id, issuer, sandbox } = body;
+
+    if (!bank_account_id) {
+      return NextResponse.json({ error: "bank_account_id obrigatorio" }, { status: 400 });
+    }
+
+    const update: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (typeof client_id === "string" && client_id.trim()) update.client_id = client_id.trim();
+    if (typeof issuer === "string" && issuer.trim()) update.issuer = issuer.trim();
+    if (typeof sandbox === "boolean") update.sandbox = sandbox;
+
+    if (Object.keys(update).length === 1) {
+      return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
+    }
+
+    const sb = createServerClient();
+    const { error } = await sb
+      .from("revolut_credentials")
+      .update(update)
+      .eq("bank_account_id", bank_account_id);
+
+    if (error) throw error;
+    return NextResponse.json({ ok: true, updated: update });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
+  }
+}
