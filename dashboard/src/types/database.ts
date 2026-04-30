@@ -29,6 +29,8 @@ export interface BankAccount {
   balance_current: number;
   balance_available: number;
   active: boolean;
+  opening_balance?: number;
+  opening_balance_date?: string | null;
 }
 
 export interface Category {

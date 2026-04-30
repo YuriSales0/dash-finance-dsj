@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 
     const { data: accounts } = await sb
       .from("bank_accounts")
-      .select("id, currency")
+      .select("id, currency, opening_balance")
       .eq("active", true);
 
     const results: any[] = [];
@@ -43,7 +43,10 @@ export async function POST(request: Request) {
       const sum = list.reduce((s, t) => s + Number(t.amount_original || 0), 0);
       const intercompanyCount = list.filter((t) => t.is_intercompany).length;
 
-      const initial = initial_balances[acc.id] || 0;
+      // Prioridade: initial_balances do request > opening_balance da conta
+      const initial = initial_balances[acc.id] !== undefined
+        ? initial_balances[acc.id]
+        : (Number(acc.opening_balance) || 0);
       const newBalance = initial + sum;
 
       await sb

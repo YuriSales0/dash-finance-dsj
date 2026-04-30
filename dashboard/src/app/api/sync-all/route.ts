@@ -12,11 +12,11 @@ export async function POST() {
   const sb = createServerClient();
   const log: string[] = [];
 
-  // 1. Recalcular saldos das contas
+  // 1. Recalcular saldos das contas: opening_balance + sum(transactions)
   try {
     const { data: accounts } = await sb
       .from("bank_accounts")
-      .select("id, currency")
+      .select("id, currency, opening_balance")
       .eq("active", true);
 
     let updated = 0;
@@ -29,13 +29,15 @@ export async function POST() {
         (s, t) => s + Number(t.amount_original || 0),
         0
       );
+      const opening = Number(acc.opening_balance) || 0;
+      const newBalance = opening + sum;
       await sb
         .from("bank_accounts")
-        .update({ balance_current: sum, balance_available: sum })
+        .update({ balance_current: newBalance, balance_available: newBalance })
         .eq("id", acc.id);
       updated++;
     }
-    log.push(`Saldos recalculados: ${updated} contas`);
+    log.push(`Saldos recalculados: ${updated} contas (opening + transactions)`);
   } catch (e: any) {
     log.push(`Erro ao recalcular saldos: ${e.message}`);
   }

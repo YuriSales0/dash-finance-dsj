@@ -20,6 +20,7 @@ interface Account {
   currency: string;
   balance_current: number;
   balance_available: number;
+  opening_balance?: number;
 }
 
 interface EntityWithAccounts {
@@ -209,6 +210,20 @@ export function SettingsForms({
     router.refresh();
   }
 
+  async function updateOpeningBalance(accountId: string, value: string) {
+    setLoading(`open-${accountId}`);
+    await fetch("/api/accounts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: accountId,
+        opening_balance: Number(value) || 0,
+      }),
+    });
+    setLoading(null);
+    router.refresh();
+  }
+
   async function updateBalance(accountId: string) {
     setLoading(`bal-${accountId}`);
     await fetch("/api/accounts", {
@@ -363,8 +378,9 @@ export function SettingsForms({
                 {ent.accounts.map((acc) => (
                   <div
                     key={acc.id}
-                    className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"
+                    className="bg-slate-50 rounded-lg px-3 py-2"
                   >
+                    <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Wallet size={14} className="text-slate-400" />
                       <div>
@@ -422,6 +438,30 @@ export function SettingsForms({
                       >
                         <Trash2 size={12} />
                       </button>
+                    </div>
+                    </div>
+                    {/* Opening balance: dinheiro que tinha na conta antes do CSV */}
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                      <span className="text-slate-500">Saldo de abertura:</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        defaultValue={acc.opening_balance || 0}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          if (Number(val) !== (acc.opening_balance || 0)) {
+                            updateOpeningBalance(acc.id, val);
+                          }
+                        }}
+                        className="input text-xs py-1 px-2 w-32 font-mono"
+                        title="Saldo que ja existia antes do CSV. Sera somado as transacoes."
+                      />
+                      <span className="text-slate-400 text-[10px]">
+                        + transacoes = saldo atual
+                      </span>
+                      {loading === `open-${acc.id}` && (
+                        <Loader2 size={10} className="animate-spin text-slate-400" />
+                      )}
                     </div>
                   </div>
                 ))}
