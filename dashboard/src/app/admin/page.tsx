@@ -149,6 +149,24 @@ export default async function OverviewPage() {
               {formatPercent(revenueGrowth)} vs mes anterior
             </p>
           </div>
+          <div className="card card-body">
+            <p className="text-sm text-slate-500">Custos Totais</p>
+            <p className="text-2xl font-bold text-red-600 mt-1">
+              {formatCurrency(currentMonth?.total_costs || 0)}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              {currentMonth?.cost_products ? `Produtos: ${formatCurrency(currentMonth.cost_products)}` : ""}
+            </p>
+          </div>
+          <div className="card card-body">
+            <p className="text-sm text-slate-500">Lucro Operacional</p>
+            <p className={`text-2xl font-bold mt-1 ${(currentMonth?.net_profit || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {formatCurrency(currentMonth?.net_profit || 0)}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Margem: {formatPercent(currentMonth?.margin_pct || 0)}
+            </p>
+          </div>
         </div>
 
         {/* Alertas */}
