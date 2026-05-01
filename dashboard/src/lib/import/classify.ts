@@ -208,6 +208,18 @@ export async function classify(
   entityName: string,
   bankName: string
 ): Promise<ClassificationResult> {
+  // Regra de negocio: entradas em Mercury ou Airwallex sao SEMPRE receita
+  // (payouts de Shopify/Stripe, pagamentos de clientes — nunca intercompany)
+  const bank = bankName.toLowerCase();
+  if ((bank.includes("mercury") || bank.includes("airwallex")) && tx.amount_usd > 0) {
+    return {
+      category_id: "revenue_shopify",
+      classified_by: "rule",
+      confidence: 95,
+      needs_review: false,
+    };
+  }
+
   const byRule = await classifyByRules(tx);
   if (byRule) return byRule;
   return classifyByAI(tx, entityName, bankName);
