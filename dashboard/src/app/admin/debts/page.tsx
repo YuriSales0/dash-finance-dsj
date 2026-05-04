@@ -48,11 +48,29 @@ export default async function DebtsPage() {
       d.recurrence_interval === "monthly" ? 30 :
       d.recurrence_interval === "quarterly" ? 90 :
       365;
-    // Quantas ocorrencias APOS a primeira (ja contada acima) cabem em 30 dias?
     const extraOccurrences = Math.floor(30 / intervalDays);
     if (extraOccurrences > 0) {
       const perOccurrence = d.amount_total + (d.fixed_commission || 0);
       next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + perOccurrence * extraOccurrences;
+    }
+  }
+
+  // Aportes com juros parcelados: somar parcelas que caem em 30 dias
+  for (const d of debts) {
+    if (d.category !== "aporte_investidor" || !d.interest_payment_interval) continue;
+    if (d.status === "paid") continue;
+    const intervalDays =
+      d.interest_payment_interval === "weekly" ? 7 :
+      d.interest_payment_interval === "biweekly" ? 14 :
+      d.interest_payment_interval === "monthly" ? 30 :
+      d.interest_payment_interval === "quarterly" ? 90 :
+      365;
+    const installments = Math.floor(30 / intervalDays);
+    if (installments > 0) {
+      const interestPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
+      if (interestPayment > 0) {
+        next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + interestPayment * installments;
+      }
     }
   }
 
@@ -84,6 +102,26 @@ export default async function DebtsPage() {
       const perOccurrence = d.amount_total + (d.fixed_commission || 0);
       projectionByCurrency[d.currency] =
         (projectionByCurrency[d.currency] || 0) + perOccurrence * occurrences;
+    }
+  }
+
+  // Aportes com juros parcelados: parcelas em 90 dias
+  for (const d of debts) {
+    if (d.category !== "aporte_investidor" || !d.interest_payment_interval) continue;
+    if (d.status === "paid") continue;
+    const intervalDays =
+      d.interest_payment_interval === "weekly" ? 7 :
+      d.interest_payment_interval === "biweekly" ? 14 :
+      d.interest_payment_interval === "monthly" ? 30 :
+      d.interest_payment_interval === "quarterly" ? 90 :
+      365;
+    const installments = Math.floor(projectionDays / intervalDays);
+    if (installments > 0) {
+      const interestPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
+      if (interestPayment > 0) {
+        projectionByCurrency[d.currency] =
+          (projectionByCurrency[d.currency] || 0) + interestPayment * installments;
+      }
     }
   }
 
