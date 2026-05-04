@@ -142,27 +142,91 @@ export default async function DebtsPage() {
 
   const recurringCount = debts.filter((d) => d.is_recurring).length;
 
-  // Classificar dividas por prazo de vencimento
+  // Classificar dividas por prazo de vencimento (TODOS os pagamentos futuros, nao so o due_date)
+  // Curto: dias [0, 30] | Medio: (30, 150] | Longo: (150, infinito) | Atrasadas: dias < 0
   type TermBucket = Record<string, number>;
-  const shortTerm: TermBucket = {};  // <= 30 dias
-  const mediumTerm: TermBucket = {}; // 31-150 dias
-  const longTerm: TermBucket = {};   // > 150 dias
+  const shortTerm: TermBucket = {};
+  const mediumTerm: TermBucket = {};
+  const longTerm: TermBucket = {};
   const overdueByCurrency: TermBucket = {};
+
+  function bucketFor(daysFromNow: number): TermBucket {
+    if (daysFromNow < 0) return overdueByCurrency;
+    if (daysFromNow <= 30) return shortTerm;
+    if (daysFromNow <= 150) return mediumTerm;
+    return longTerm;
+  }
+
+  function intervalDaysFor(interval: string | null | undefined): number {
+    return interval === "weekly" ? 7 :
+           interval === "biweekly" ? 14 :
+           interval === "monthly" ? 30 :
+           interval === "quarterly" ? 90 :
+           interval === "yearly" ? 365 :
+           0;
+  }
+
+  // Janela de projecao: ate o vencimento da divida ou recorrencia (cap em 1 ano pra long prazo)
+  const TERM_HORIZON_DAYS = 365;
 
   for (const d of debts) {
     if (d.status === "paid") continue;
     const remaining = d.amount_total - d.amount_paid;
     if (remaining <= 0) continue;
-    const daysUntilDue = (new Date(d.due_date).getTime() - today.getTime()) / 86400000;
 
-    if (daysUntilDue < 0) {
-      overdueByCurrency[d.currency] = (overdueByCurrency[d.currency] || 0) + remaining;
-    } else if (daysUntilDue <= 30) {
-      shortTerm[d.currency] = (shortTerm[d.currency] || 0) + remaining;
-    } else if (daysUntilDue <= 150) {
-      mediumTerm[d.currency] = (mediumTerm[d.currency] || 0) + remaining;
+    const dueDate = new Date(d.due_date);
+    const daysUntilDue = (dueDate.getTime() - today.getTime()) / 86400000;
+    const isAporte = d.category === "aporte_investidor";
+    const isAporteParcelado = isAporte && !!d.interest_payment_interval;
+    const commission = d.fixed_commission || 0;
+
+    if (isAporteParcelado) {
+      // 1) Parcelas de juros em cada bucket
+      const intDays = intervalDaysFor(d.interest_payment_interval);
+      const interestPerPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
+      if (intDays > 0 && interestPerPayment > 0) {
+        // Quantas parcelas cabem ate o vencimento (ou ate o horizonte)
+        const limitDays = Math.min(daysUntilDue, TERM_HORIZON_DAYS);
+        const installments = Math.floor(limitDays / intDays);
+        for (let i = 1; i <= installments; i++) {
+          const paymentDay = i * intDays;
+          const bucket = bucketFor(paymentDay);
+          bucket[d.currency] = (bucket[d.currency] || 0) + interestPerPayment;
+        }
+      }
+      // 2) Balloon final (principal + comissao) no bucket do due_date
+      const balloon = remaining + commission;
+      const bucket = bucketFor(daysUntilDue);
+      bucket[d.currency] = (bucket[d.currency] || 0) + balloon;
+    } else if (d.is_recurring && d.recurrence_interval) {
+      // Recorrencia normal (salario, assinatura): cada ocorrencia entra no bucket pelo dia
+      const intDays = intervalDaysFor(d.recurrence_interval);
+      const perOccurrence = d.amount_total + commission;
+      const recurrenceEnd = d.recurrence_end_date ? new Date(d.recurrence_end_date) : null;
+      const recurrenceLimitDays = recurrenceEnd
+        ? Math.min(TERM_HORIZON_DAYS, (recurrenceEnd.getTime() - today.getTime()) / 86400000)
+        : TERM_HORIZON_DAYS;
+
+      if (intDays > 0 && perOccurrence > 0) {
+        // Primeira ocorrencia: o due_date original (pode ser passado, presente ou futuro)
+        let occDays = daysUntilDue;
+        // Se due_date ja passou, avanca pra proxima ocorrencia futura
+        while (occDays < 0) occDays += intDays;
+        while (occDays <= recurrenceLimitDays) {
+          const bucket = bucketFor(occDays);
+          bucket[d.currency] = (bucket[d.currency] || 0) + perOccurrence;
+          occDays += intDays;
+        }
+        // Atrasadas (due_date < today): a primeira ocorrencia atrasada
+        if (daysUntilDue < 0) {
+          overdueByCurrency[d.currency] = (overdueByCurrency[d.currency] || 0) + perOccurrence;
+        }
+      }
     } else {
-      longTerm[d.currency] = (longTerm[d.currency] || 0) + remaining;
+      // Divida pontual (nao recorrente, nao aporte parcelado)
+      const total = remaining + (isAporte ? commission : 0);
+      const bucket = bucketFor(daysUntilDue);
+      bucket[d.currency] = (bucket[d.currency] || 0) + total;
     }
   }
 
