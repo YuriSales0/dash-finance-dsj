@@ -334,6 +334,7 @@ export async function POST(request: Request) {
     // Bookkeeping automatico: regenerar P&L dos meses afetados + detectar intercompany
     let pnlGenerated: string[] = [];
     let intercompanyDetected = 0;
+    let fxPairsDetected = 0;
 
     if (imported > 0) {
       // Coletar meses unicos das transacoes importadas
@@ -350,6 +351,14 @@ export async function POST(request: Request) {
         intercompanyDetected = (ic as number) || 0;
       } catch {
         // nao critico
+      }
+
+      // Detectar pares FX: reclassificar inflows que sao contrapartida de outflows FX
+      try {
+        const { data: fx } = await sb.rpc("detect_fx_pairs", { p_hours_window: 168 });
+        fxPairsDetected = (fx as number) || 0;
+      } catch {
+        // nao critico — funcao pode nao existir ainda
       }
 
       // Regenerar P&L para cada mes afetado (todas empresas + consolidado)
@@ -389,6 +398,7 @@ export async function POST(request: Request) {
       used_opening_balance: usedOpeningBalance,
       opening_balance: typeof opening_balance === "number" ? opening_balance : undefined,
       investor_matches: investorMatchCount,
+      fx_pairs_detected: fxPairsDetected,
       filtered_out_by_currency: filteredOutByCurrency,
     });
   } catch (e: any) {

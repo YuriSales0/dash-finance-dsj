@@ -207,6 +207,7 @@ REGRAS:
 }
 
 // Padroes de descricao que indicam cambio (FX exchange) — multi-idioma
+// Inclui variantes de inflow e outflow
 const FX_PATTERNS = [
   /\bexchange\b/i,
   /\bexchanged\b/i,
@@ -216,8 +217,11 @@ const FX_PATTERNS = [
   /\bconvers[aã]o\b/i,
   /\bc[aâ]mbio\b/i,
   /\bfx\b/i,
-  /\b(gbp|usd|eur|brl) to (gbp|usd|eur|brl)\b/i,
-  /from (gbp|usd|eur|brl) to (gbp|usd|eur|brl)/i,
+  /\b(gbp|usd|eur|brl)\s*(to|from|para|de)\s*(gbp|usd|eur|brl)\b/i,
+  /\btop[- ]?up\b/i,
+  /\binter[- ]?account\s*transfer\b/i,
+  /\bsold\s+(gbp|usd|eur|brl)\b/i,
+  /\bbought\s+(gbp|usd|eur|brl)\b/i,
 ];
 
 function looksLikeFx(tx: NormalizedTransaction): boolean {
