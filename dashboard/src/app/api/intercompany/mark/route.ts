@@ -53,6 +53,9 @@ export async function POST(request: Request) {
     }).in("id", ids);
   }
 
+  // Regenerar P&L dos meses afetados
+  await regenPnlForIds(sb, ids);
+
   return NextResponse.json({ ok: true, updated: ids.length });
 }
 
@@ -72,5 +75,26 @@ export async function DELETE(request: Request) {
     counterpart_entity_id: null,
   }).in("id", ids);
 
+  await regenPnlForIds(sb, ids);
+
   return NextResponse.json({ ok: true });
+}
+
+async function regenPnlForIds(sb: any, ids: number[]) {
+  try {
+    const { data } = await sb
+      .from("transactions")
+      .select("timestamp")
+      .in("id", ids);
+    const months = new Set<string>();
+    for (const t of (data || []) as any[]) {
+      const d = new Date(t.timestamp);
+      months.add(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10));
+    }
+    for (const m of Array.from(months)) {
+      await sb.rpc("generate_consolidated_pnl", { p_month: m });
+    }
+  } catch {
+    // nao critico
+  }
 }

@@ -115,6 +115,25 @@ export async function POST(request: Request) {
     }
   }
 
+  // Regenerar P&L dos meses afetados pela reclassificacao
+  try {
+    const sb2 = createServerClient();
+    const { data: txRow } = await sb2
+      .from("transactions")
+      .select("timestamp")
+      .eq("id", id)
+      .single();
+    if (txRow) {
+      const d = new Date((txRow as any).timestamp);
+      const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
+        .toISOString()
+        .slice(0, 10);
+      await sb2.rpc("generate_consolidated_pnl", { p_month: monthStart });
+    }
+  } catch {
+    // nao critico
+  }
+
   return NextResponse.json({
     success: true,
     learned_rule_id: learnedRuleId,

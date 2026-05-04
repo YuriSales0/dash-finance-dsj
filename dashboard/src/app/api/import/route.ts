@@ -156,6 +156,7 @@ export async function POST(request: Request) {
     // Classificar e inserir em lotes
     let imported = 0;
     let needsReviewCount = 0;
+    let importedAmountSum = 0; // soma de amount_original das txs efetivamente inseridas
     const batchSize = 20;
 
     for (let i = 0; i < newOnes.length; i += batchSize) {
@@ -191,7 +192,10 @@ export async function POST(request: Request) {
         if (error.code === "23505") {
           for (const tx of classified) {
             const { error: singleErr } = await sb.from("transactions").insert(tx);
-            if (!singleErr) imported++;
+            if (!singleErr) {
+              imported++;
+              importedAmountSum += Number(tx.amount_original || 0);
+            }
           }
         } else {
           return NextResponse.json(
@@ -201,6 +205,9 @@ export async function POST(request: Request) {
         }
       } else {
         imported += classified.length;
+        for (const tx of classified) {
+          importedAmountSum += Number(tx.amount_original || 0);
+        }
       }
     }
 
@@ -219,9 +226,8 @@ export async function POST(request: Request) {
         .single();
       const before = Number((accBefore as any)?.balance_current ?? 0);
 
-      // Soma do liquido das transacoes que efetivamente foram inseridas (newOnes)
-      // (mesmo se algum erro 23505 caiu, contamos as que estao no array — sao as alvos do upsert)
-      balanceDelta = newOnes.reduce((acc, tx) => acc + Number(tx.amount_original || 0), 0);
+      // Soma APENAS das transacoes efetivamente inseridas (nao conta falhas 23505)
+      balanceDelta = importedAmountSum;
       // Arredondar pra 2 casas pra evitar drift de floating point
       balanceDelta = Math.round(balanceDelta * 100) / 100;
       newBalance = Math.round((before + balanceDelta) * 100) / 100;

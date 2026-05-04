@@ -17,15 +17,18 @@ interface Rule {
 }
 
 let cachedRules: Rule[] | null = null;
+let rulesLoadedAt = 0;
+const RULES_TTL_MS = 60_000; // 60s — regras novas pegam em <= 1 min
 
 async function loadRules(): Promise<Rule[]> {
-  if (cachedRules) return cachedRules;
+  if (cachedRules && Date.now() - rulesLoadedAt < RULES_TTL_MS) return cachedRules;
   const sb = createServerClient();
   const { data } = await sb
     .from("classification_rules")
     .select("id, pattern_type, pattern_value, category_id")
     .eq("active", true);
   cachedRules = ((data || []) as Rule[]);
+  rulesLoadedAt = Date.now();
   return cachedRules;
 }
 

@@ -352,6 +352,24 @@ class SupabaseRepository implements Repository {
   }
 
   async deleteEntity(id: string) {
+    // Checar dependencias antes de deletar (transactions, bank_accounts, monthly_pnl)
+    const { count: txCount } = await this.db
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("entity_id", id);
+    if (txCount && txCount > 0) {
+      throw new Error(
+        `Empresa tem ${txCount} transacao(oes). Exclua ou mova antes de deletar.`
+      );
+    }
+    // Desativar contas bancarias vinculadas
+    await this.db
+      .from("bank_accounts")
+      .update({ active: false })
+      .eq("entity_id", id);
+    // Limpar P&L
+    await this.db.from("monthly_pnl").delete().eq("entity_id", id);
+    // Deletar a entity
     const { error } = await this.db.from("entities").delete().eq("id", id);
     if (error) throw error;
   }
