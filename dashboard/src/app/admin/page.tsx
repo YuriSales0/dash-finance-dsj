@@ -1,9 +1,10 @@
 import { Header } from "@/components/layout/Header";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { BookkeepingStatus } from "@/components/dashboard/BookkeepingStatus";
+import { PnlOverview } from "@/components/dashboard/PnlOverview";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
-import { formatCurrency, formatPercent, entityColors, entityNames } from "@/lib/format";
+import { formatCurrency, entityColors, entityNames } from "@/lib/format";
 import { AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +12,9 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export default async function OverviewPage() {
-  const [accounts, pnl12m, transactions, receivables, debts] = await Promise.all([
+  const [accounts, pnl24m, transactions, receivables, debts] = await Promise.all([
     repository.getBankAccounts(),
-    repository.getMonthlyPnl({ entity_id: "consolidated", months: 12 }),
+    repository.getMonthlyPnl({ entity_id: "consolidated", months: 24 }),
     repository.getTransactions({ needs_review: true, limit: 100 }),
     repository.getReceivables(),
     repository.getDebts(),
@@ -61,19 +62,6 @@ export default async function OverviewPage() {
     });
   }
 
-  // P&L: mes mais recente com dados
-  const monthsWithData = pnl12m.filter((p) => p.revenue > 0 || p.total_costs > 0);
-  const currentMonth = monthsWithData.length > 0
-    ? monthsWithData[monthsWithData.length - 1]
-    : pnl12m[pnl12m.length - 1];
-  const isShowingHistorical = currentMonth && currentMonth !== pnl12m[pnl12m.length - 1];
-
-  const currentIdx = pnl12m.findIndex((p) => p === currentMonth);
-  const previousMonth = currentIdx > 0 ? pnl12m[currentIdx - 1] : null;
-  const revenueGrowth = previousMonth && previousMonth.revenue > 0
-    ? ((currentMonth.revenue - previousMonth.revenue) / previousMonth.revenue) * 100
-    : 0;
-
   // Ultima atualizacao
   const lastSyncedAccount = accounts
     .filter((a) => a.last_synced_at)
@@ -102,8 +90,11 @@ export default async function OverviewPage() {
           receivablesOverdue={receivablesOverdue}
           debtsOverdue={debtsOverdue}
           lastSyncedAt={lastSyncedAccount?.last_synced_at || null}
-          lastPnlGeneratedAt={currentMonth?.generated_at || null}
+          lastPnlGeneratedAt={pnl24m.length > 0 ? pnl24m[pnl24m.length - 1]?.generated_at : null}
         />
+
+        {/* P&L: Receita / Despesas / Lucro — filtro por ano + mes */}
+        <PnlOverview data={pnl24m} />
 
         {/* Saldos por moeda */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -131,42 +122,6 @@ export default async function OverviewPage() {
               </div>
             );
           })}
-
-          {/* P&L resumo */}
-          <div className="card card-body">
-            <p className="text-sm text-slate-500 flex items-center gap-1">
-              Receita
-              {isShowingHistorical && currentMonth && (
-                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
-                  {new Date(currentMonth.month).toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}
-                </span>
-              )}
-            </p>
-            <p className="text-2xl font-bold text-green-600 mt-1">
-              {formatCurrency(currentMonth?.revenue || 0)}
-            </p>
-            <p className={`text-xs mt-1 ${revenueGrowth >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatPercent(revenueGrowth)} vs mes anterior
-            </p>
-          </div>
-          <div className="card card-body">
-            <p className="text-sm text-slate-500">Custos Totais</p>
-            <p className="text-2xl font-bold text-red-600 mt-1">
-              {formatCurrency(currentMonth?.total_costs || 0)}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              {currentMonth?.cost_products ? `Produtos: ${formatCurrency(currentMonth.cost_products)}` : ""}
-            </p>
-          </div>
-          <div className="card card-body">
-            <p className="text-sm text-slate-500">Lucro Operacional</p>
-            <p className={`text-2xl font-bold mt-1 ${(currentMonth?.net_profit || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatCurrency(currentMonth?.net_profit || 0)}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              Margem: {formatPercent(currentMonth?.margin_pct || 0)}
-            </p>
-          </div>
         </div>
 
         {/* Alertas */}
@@ -226,7 +181,7 @@ export default async function OverviewPage() {
             <Badge variant="info">Consolidado</Badge>
           </div>
           <div className="card-body">
-            <RevenueChart data={pnl12m} />
+            <RevenueChart data={pnl24m} />
           </div>
         </div>
       </div>
