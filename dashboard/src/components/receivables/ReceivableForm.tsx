@@ -2,20 +2,29 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, AlertTriangle } from "lucide-react";
 
-export function ReceivableForm() {
+interface EntityOption {
+  id: string;
+  name: string;
+  currency_default: string;
+}
+
+export function ReceivableForm({ entities }: { entities: EntityOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const defaultEntity = entities[0]?.id || "";
+  const defaultCurrency = entities[0]?.currency_default || "USD";
+
   const [form, setForm] = useState({
-    entity_id: "dsj_network",
+    entity_id: defaultEntity,
     description: "",
     counterparty: "",
     amount_total: "",
-    currency: "USD",
+    currency: defaultCurrency,
     issue_date: new Date().toISOString().slice(0, 10),
     due_date: "",
     open_for_financing: false,
@@ -28,7 +37,14 @@ export function ReceivableForm() {
   });
 
   function update<K extends keyof typeof form>(key: K, value: typeof form[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      if (key === "entity_id") {
+        const ent = entities.find((e) => e.id === value);
+        if (ent) next.currency = ent.currency_default;
+      }
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -90,15 +106,16 @@ export function ReceivableForm() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Empresa">
             <select className="input" value={form.entity_id} onChange={(e) => update("entity_id", e.target.value)}>
-              <option value="dsj_network">DSJ Network LLC</option>
-              <option value="universal_mkt">Universal MKT LLP</option>
-              <option value="dsj_connect">DSJ Connect LLC</option>
+              {entities.map((ent) => (
+                <option key={ent.id} value={ent.id}>{ent.name}</option>
+              ))}
             </select>
           </Field>
           <Field label="Moeda">
             <select className="input" value={form.currency} onChange={(e) => update("currency", e.target.value)}>
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
+              <option value="EUR">EUR</option>
               <option value="BRL">BRL</option>
             </select>
           </Field>
@@ -155,7 +172,12 @@ export function ReceivableForm() {
           <textarea className="input" rows={2} value={form.notes} onChange={(e) => update("notes", e.target.value)} />
         </Field>
 
-        {error && <div className="text-sm text-red-600">{error}</div>}
+        {error && (
+          <div className="bg-red-50 text-red-700 rounded p-2 text-xs flex items-start gap-2">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
         <div className="flex gap-2">
           <button type="submit" disabled={loading} className="btn-primary inline-flex items-center gap-2">

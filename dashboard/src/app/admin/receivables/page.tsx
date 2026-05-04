@@ -10,7 +10,11 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export default async function ReceivablesPage() {
-  const receivables = await repository.getReceivables();
+  const [receivables, entities] = await Promise.all([
+    repository.getReceivables(),
+    repository.getEntities(),
+  ]);
+  const activeEntities = entities.filter((e) => e.id !== "consolidated");
 
   // Total a receber por moeda (sem conversao)
   const pendingByCurrency: Record<string, number> = {};
@@ -69,7 +73,7 @@ export default async function ReceivablesPage() {
           </div>
         </div>
 
-        <ReceivableForm />
+        <ReceivableForm entities={activeEntities} />
 
         <ReceivablesTable receivables={receivables} />
       </div>
