@@ -3,6 +3,7 @@ import type {
   BankAccount,
   Transaction,
   MonthlyPnl,
+  MonthlyCashflow,
   Investor,
   Opportunity,
   Investment,
@@ -63,6 +64,7 @@ export interface Repository {
     entity_id?: EntityId;
     months?: number;
   }): Promise<MonthlyPnl[]>;
+  getMonthlyCashflow(months?: number): Promise<MonthlyCashflow[]>;
   getInvestors(): Promise<Investor[]>;
   getOpportunities(): Promise<Opportunity[]>;
   getInvestments(filters?: { investor_id?: number; opportunity_id?: number }): Promise<Investment[]>;
@@ -197,6 +199,10 @@ class MockRepository implements Repository {
       pnl = pnl.filter((p) => new Date(p.month) >= cutoff);
     }
     return pnl.sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  async getMonthlyCashflow(_months?: number): Promise<MonthlyCashflow[]> {
+    return [];
   }
 
   async getInvestors() { return MOCK_INVESTORS; }
@@ -477,6 +483,77 @@ class SupabaseRepository implements Repository {
     const { data, error } = await query;
     if (error) throw error;
     return (data || []) as MonthlyPnl[];
+  }
+
+  async getMonthlyCashflow(months: number = 24): Promise<MonthlyCashflow[]> {
+    // Janela: ultimos N meses
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffStr = cutoff.toISOString();
+
+    // Pagina pra evitar limite default de 1000 linhas
+    const all: Array<{
+      timestamp: string;
+      amount_usd: number;
+      category_id: string | null;
+      is_intercompany: boolean;
+    }> = [];
+    const pageSize = 1000;
+    let page = 0;
+    while (true) {
+      const { data, error } = await this.db
+        .from("transactions")
+        .select("timestamp, amount_usd, category_id, is_intercompany")
+        .gte("timestamp", cutoffStr)
+        .order("timestamp", { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+      if (error) throw error;
+      const batch = (data || []) as any[];
+      all.push(...batch);
+      if (batch.length < pageSize) break;
+      page++;
+      if (page > 50) break; // hard cap 50k
+    }
+
+    // Agrupar por mes (YYYY-MM-01)
+    const buckets: Record<string, MonthlyCashflow> = {};
+    for (const t of all) {
+      const d = new Date(t.timestamp);
+      const monthKey = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+      if (!buckets[monthKey]) {
+        buckets[monthKey] = {
+          month: monthKey,
+          cash_delta: 0,
+          revenue_flow: 0,
+          cost_flow: 0,
+          intercompany_flow: 0,
+          transfer_flow: 0,
+          uncategorized_flow: 0,
+          investment_flow: 0,
+          count: 0,
+        };
+      }
+      const b = buckets[monthKey];
+      const amt = Number(t.amount_usd || 0);
+      b.cash_delta += amt;
+      b.count++;
+
+      if (t.is_intercompany) {
+        b.intercompany_flow += amt;
+      } else if (!t.category_id) {
+        b.uncategorized_flow += amt;
+      } else if (t.category_id.startsWith("revenue")) {
+        b.revenue_flow += amt;
+      } else if (t.category_id.startsWith("cost")) {
+        b.cost_flow += amt;
+      } else if (t.category_id.startsWith("transfer")) {
+        b.transfer_flow += amt;
+      } else if (t.category_id.startsWith("investment")) {
+        b.investment_flow += amt;
+      }
+    }
+
+    return Object.values(buckets).sort((a, b) => a.month.localeCompare(b.month));
   }
 
   async getInvestors(): Promise<Investor[]> {

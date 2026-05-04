@@ -5,16 +5,17 @@ import { PnlOverview } from "@/components/dashboard/PnlOverview";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, entityColors, entityNames } from "@/lib/format";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Wallet } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export default async function OverviewPage() {
-  const [accounts, pnl24m, transactions, receivables, debts] = await Promise.all([
+  const [accounts, pnl24m, cashflow24m, transactions, receivables, debts] = await Promise.all([
     repository.getBankAccounts(),
     repository.getMonthlyPnl({ entity_id: "consolidated", months: 24 }),
+    repository.getMonthlyCashflow(24),
     repository.getTransactions({ needs_review: true, limit: 100 }),
     repository.getReceivables(),
     repository.getDebts(),
@@ -93,10 +94,40 @@ export default async function OverviewPage() {
           lastPnlGeneratedAt={pnl24m.length > 0 ? pnl24m[pnl24m.length - 1]?.generated_at : null}
         />
 
-        {/* P&L: Receita / Despesas / Lucro — filtro por ano + mes */}
-        <PnlOverview data={pnl24m} />
+        {/* P&L: Receita / Despesas / Lucro + Reconciliacao — filtro por ano + mes */}
+        <PnlOverview pnl={pnl24m} cashflow={cashflow24m} />
 
-        {/* Saldos por moeda */}
+        {/* Caixa Total + Saldos por moeda */}
+        <div className="card card-body bg-gradient-to-r from-slate-50 to-white">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-brand-50 rounded-lg">
+              <Wallet size={18} className="text-brand-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Caixa Total (snapshot atual)</p>
+              <p className="text-xs text-slate-500">Soma dos saldos de todas as contas, agrupado por moeda</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {allCurrencies.length === 0 ? (
+              <p className="text-sm text-slate-400">Nenhuma conta com saldo</p>
+            ) : (
+              allCurrencies.map((currency) => {
+                const bal = balanceByCurrency[currency] || 0;
+                return (
+                  <div key={currency} className="bg-white rounded-lg p-3 border border-slate-200">
+                    <p className="text-xs text-slate-500">{currency}</p>
+                    <p className={`text-xl font-bold mt-0.5 ${bal >= 0 ? "text-slate-900" : "text-red-600"}`}>
+                      {formatCurrency(bal, currency)}
+                    </p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Saldos por moeda com recebiveis/dividas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {allCurrencies.map((currency) => {
             const bal = balanceByCurrency[currency] || 0;

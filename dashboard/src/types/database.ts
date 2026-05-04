@@ -102,6 +102,20 @@ export interface MonthlyPnl {
   generated_at: string;
 }
 
+// Variacao de caixa por mes (consolidado, USD)
+// Decompoe o cash_delta em: P&L + intercompany + transfers + uncategorized + investments
+export interface MonthlyCashflow {
+  month: string;             // YYYY-MM-01
+  cash_delta: number;        // soma de TODAS amount_usd no mes
+  revenue_flow: number;      // categorias revenue_*
+  cost_flow: number;         // categorias cost_* (negativo)
+  intercompany_flow: number; // is_intercompany = true
+  transfer_flow: number;     // categorias transfer_* (interbank, fx) — sem intercompany
+  uncategorized_flow: number;// category_id IS NULL
+  investment_flow: number;   // categorias investment_*
+  count: number;
+}
+
 export interface Investor {
   id: number;
   name: string;

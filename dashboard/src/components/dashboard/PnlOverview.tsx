@@ -2,8 +2,16 @@
 
 import { useState, useMemo } from "react";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import type { MonthlyPnl } from "@/types/database";
-import { TrendingUp, TrendingDown, DollarSign, ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
+import type { MonthlyPnl, MonthlyCashflow } from "@/types/database";
+import {
+  TrendingUp,
+  TrendingDown,
+  ArrowUpRight,
+  ArrowDownRight,
+  Scale,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 
 const MONTH_NAMES = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
@@ -11,29 +19,54 @@ const MONTH_NAMES = [
 ];
 
 interface PnlOverviewProps {
-  data: MonthlyPnl[];
+  pnl: MonthlyPnl[];
+  cashflow?: MonthlyCashflow[];
 }
 
-export function PnlOverview({ data }: PnlOverviewProps) {
+export function PnlOverview({ pnl, cashflow = [] }: PnlOverviewProps) {
   const years = useMemo(() => {
     const set = new Set<number>();
-    for (const p of data) {
+    for (const p of pnl) {
       set.add(new Date(p.month).getFullYear());
     }
+    for (const c of cashflow) {
+      set.add(new Date(c.month).getFullYear());
+    }
     return Array.from(set).sort((a, b) => b - a);
-  }, [data]);
+  }, [pnl, cashflow]);
 
   const [selectedYear, setSelectedYear] = useState(() => years[0] || new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null); // null = all
 
   const filtered = useMemo(() => {
-    return data.filter((p) => {
+    return pnl.filter((p) => {
       const d = new Date(p.month);
       if (d.getFullYear() !== selectedYear) return false;
       if (selectedMonth !== null && d.getMonth() !== selectedMonth) return false;
       return true;
     });
-  }, [data, selectedYear, selectedMonth]);
+  }, [pnl, selectedYear, selectedMonth]);
+
+  const filteredCashflow = useMemo(() => {
+    return cashflow.filter((c) => {
+      const d = new Date(c.month);
+      if (d.getFullYear() !== selectedYear) return false;
+      if (selectedMonth !== null && d.getMonth() !== selectedMonth) return false;
+      return true;
+    });
+  }, [cashflow, selectedYear, selectedMonth]);
+
+  const cashTotals = useMemo(() => {
+    return {
+      cash_delta: filteredCashflow.reduce((s, c) => s + c.cash_delta, 0),
+      revenue_flow: filteredCashflow.reduce((s, c) => s + c.revenue_flow, 0),
+      cost_flow: filteredCashflow.reduce((s, c) => s + c.cost_flow, 0),
+      intercompany_flow: filteredCashflow.reduce((s, c) => s + c.intercompany_flow, 0),
+      transfer_flow: filteredCashflow.reduce((s, c) => s + c.transfer_flow, 0),
+      uncategorized_flow: filteredCashflow.reduce((s, c) => s + c.uncategorized_flow, 0),
+      investment_flow: filteredCashflow.reduce((s, c) => s + c.investment_flow, 0),
+    };
+  }, [filteredCashflow]);
 
   const totals = useMemo(() => {
     const revenue = filtered.reduce((s, p) => s + p.revenue, 0);
@@ -166,6 +199,15 @@ export function PnlOverview({ data }: PnlOverviewProps) {
         </div>
       </div>
 
+      {/* Reconciliacao P&L vs Caixa */}
+      {filteredCashflow.length > 0 && (
+        <ReconciliationCard
+          pnlNet={totals.profit}
+          cashflow={cashTotals}
+          periodLabel={periodLabel}
+        />
+      )}
+
       {/* Breakdown de custos */}
       {totals.costs > 0 && (
         <div className="card">
@@ -218,6 +260,146 @@ export function PnlOverview({ data }: PnlOverviewProps) {
       {filtered.length === 0 && (
         <div className="card card-body text-center py-8 text-slate-400 text-sm">
           Sem dados de P&L para {periodLabel}. Importe transacoes e regenere o P&L.
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ReconciliationCardProps {
+  pnlNet: number;
+  cashflow: {
+    cash_delta: number;
+    revenue_flow: number;
+    cost_flow: number;
+    intercompany_flow: number;
+    transfer_flow: number;
+    uncategorized_flow: number;
+    investment_flow: number;
+  };
+  periodLabel: string;
+}
+
+function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCardProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Diferenca entre o caixa real e o P&L do periodo
+  // cash_delta = pnl_net + intercompany + transfers + uncategorized + investments
+  // entao "leakage" = cash_delta - pnl_net = intercompany + transfers + uncategorized + investments
+  const leakage = cashflow.cash_delta - pnlNet;
+  const matchesPnL = Math.abs(leakage) < 0.5;
+
+  // Decomposicao do leakage (cada item soma pra leakage)
+  const items = [
+    {
+      label: "Intercompany (entre empresas)",
+      value: cashflow.intercompany_flow,
+      hint: "No consolidado deveria ser ~0 (entradas + saidas se cancelam). Por entidade isolada nao zera.",
+    },
+    {
+      label: "Transferencias internas (interbank/FX)",
+      value: cashflow.transfer_flow,
+      hint: "Movimentos entre suas contas — nao afetam P&L mas movem o caixa.",
+    },
+    {
+      label: "Sem categoria",
+      value: cashflow.uncategorized_flow,
+      hint: "PROBLEMA: estas transacoes afetam o caixa mas NAO entram no P&L. Classifique em /admin/transactions.",
+      problem: Math.abs(cashflow.uncategorized_flow) > 1,
+    },
+    {
+      label: "Aportes/retornos de investimento",
+      value: cashflow.investment_flow,
+      hint: "Capital de investidores SCP — entradas de caixa que nao sao receita operacional.",
+    },
+  ];
+
+  return (
+    <div className="card">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full card-header flex items-center justify-between hover:bg-slate-50 transition"
+      >
+        <div className="flex items-center gap-2">
+          <Scale size={16} className={matchesPnL ? "text-green-600" : "text-amber-600"} />
+          <h3 className="font-semibold text-sm">
+            Reconciliacao P&L vs Caixa — {periodLabel}
+          </h3>
+          {!matchesPnL && (
+            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+              Diferenca: {formatCurrency(leakage)}
+            </span>
+          )}
+          {matchesPnL && (
+            <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+              Bate
+            </span>
+          )}
+        </div>
+        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      </button>
+
+      {expanded && (
+        <div className="card-body space-y-3 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-slate-50 rounded p-3">
+              <p className="text-xs text-slate-500">P&L (Lucro Liquido)</p>
+              <p className={`text-lg font-bold ${pnlNet >= 0 ? "text-green-700" : "text-red-700"}`}>
+                {formatCurrency(pnlNet)}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Receita - Despesas (apenas categorizadas)
+              </p>
+            </div>
+            <div className="bg-slate-50 rounded p-3">
+              <p className="text-xs text-slate-500">Variacao de Caixa</p>
+              <p className={`text-lg font-bold ${cashflow.cash_delta >= 0 ? "text-green-700" : "text-red-700"}`}>
+                {formatCurrency(cashflow.cash_delta)}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Soma de TODAS as transacoes (caixa real)
+              </p>
+            </div>
+            <div className={`rounded p-3 ${matchesPnL ? "bg-green-50" : "bg-amber-50"}`}>
+              <p className="text-xs text-slate-500">Diferenca (leakage)</p>
+              <p className={`text-lg font-bold ${matchesPnL ? "text-green-700" : "text-amber-700"}`}>
+                {formatCurrency(leakage)}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                {matchesPnL ? "P&L espelha o caixa" : "Diferenca explicada abaixo"}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-slate-700 mb-2">
+              Decomposicao da diferenca (cada linha soma pro leakage):
+            </p>
+            <div className="space-y-2">
+              {items.map((item) => (
+                <div
+                  key={item.label}
+                  className={`flex items-start gap-3 p-2 rounded ${
+                    item.problem ? "bg-amber-50 border border-amber-200" : "bg-white"
+                  }`}
+                >
+                  <div className="flex-1">
+                    <p className={`text-xs font-medium ${item.problem ? "text-amber-900" : "text-slate-700"}`}>
+                      {item.label}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{item.hint}</p>
+                  </div>
+                  <span
+                    className={`font-mono text-sm shrink-0 ${
+                      item.value >= 0 ? "text-green-700" : "text-red-700"
+                    }`}
+                  >
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
