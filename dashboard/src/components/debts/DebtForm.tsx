@@ -56,6 +56,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
     due_date: editDebt?.due_date || "",
     interest_rate_pct: editDebt?.interest_rate_pct != null ? String(editDebt.interest_rate_pct) : "0",
     fixed_commission: editDebt?.fixed_commission != null ? String(editDebt.fixed_commission) : "0",
+    iof_pct: editDebt?.iof_pct != null ? String(editDebt.iof_pct) : "0",
     is_recurring: !!editDebt?.is_recurring,
     recurrence_interval: (editDebt?.recurrence_interval || "monthly") as string,
     recurrence_end_date: editDebt?.recurrence_end_date || "",
@@ -71,8 +72,10 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
   const principal = Number(form.amount_total) || 0;
   const ratePct = Number(form.interest_rate_pct) || 0;
   const commission = Number(form.fixed_commission) || 0;
+  const iofPct = Number(form.iof_pct) || 0;
+  const iofAmount = principal * iofPct / 100;
   const totalReturn = isAporte && principal > 0
-    ? principal * (1 + ratePct / 100) + commission
+    ? principal * (1 + ratePct / 100) + commission + iofAmount
     : null;
   const recurringTotal = form.is_recurring && principal > 0
     ? principal + commission
@@ -142,6 +145,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
       due_date: form.due_date,
       interest_rate_pct: Number(form.interest_rate_pct),
       fixed_commission: Number(form.fixed_commission) || 0,
+      iof_pct: Number(form.iof_pct) || 0,
       is_recurring: form.is_recurring,
       recurrence_interval: form.is_recurring ? form.recurrence_interval : null,
       recurrence_end_date: form.is_recurring && form.recurrence_end_date ? form.recurrence_end_date : null,
@@ -271,6 +275,11 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
           </Field>
         )}
         {isAporte && (
+          <Field label="IOF (%)">
+            <input type="number" step="0.0001" className="input" value={form.iof_pct} onChange={(e) => update("iof_pct", e.target.value)} placeholder="Ex: 0.38" />
+          </Field>
+        )}
+        {isAporte && (
           <div className="md:col-span-2 flex items-center gap-3 py-1">
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input
@@ -279,12 +288,12 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
                 onChange={(e) => update("pays_interest_in_installments", e.target.checked as any)}
                 className="rounded"
               />
-              Pagar juros em parcelas (principal + comissao no vencimento)
+              Pagar juros em parcelas mensais ate o vencimento (principal + comissao no fim)
             </label>
           </div>
         )}
         {isAporte && form.pays_interest_in_installments && (
-          <Field label="Frequencia das parcelas de juros">
+          <Field label="Frequencia das parcelas">
             <select className="input" value={form.interest_payment_interval} onChange={(e) => update("interest_payment_interval", e.target.value)}>
               <option value="weekly">Semanal</option>
               <option value="biweekly">Quinzenal</option>
@@ -304,6 +313,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
               = {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.amount_total))} (aporte)
               {Number(form.interest_rate_pct) > 0 && <> + {form.interest_rate_pct}% juros</>}
               {Number(form.fixed_commission) > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.fixed_commission))} comissao</>}
+              {iofAmount > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(iofAmount)} IOF ({form.iof_pct}%)</>}
             </p>
             {form.pays_interest_in_installments && installmentInterest > 0 && installmentCount > 0 && (
               <div className="border-t border-blue-200 pt-2 text-xs text-blue-800 space-y-1">

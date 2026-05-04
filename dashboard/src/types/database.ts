@@ -327,6 +327,7 @@ export interface Debt {
   due_date: string;
   interest_rate_pct: number | null;
   fixed_commission?: number;
+  iof_pct?: number;
   is_recurring?: boolean;
   recurrence_interval?: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null;
   recurrence_end_date?: string | null;
