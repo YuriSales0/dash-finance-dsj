@@ -18,11 +18,41 @@ export default async function DebtsPage() {
 
   // Total a pagar por moeda (sem conversao)
   const pendingByCurrency: Record<string, number> = {};
+  // Montante a vencer nos proximos 30 dias por moeda
+  const next30ByCurrency: Record<string, number> = {};
+  const today = new Date();
+  const in30Days = new Date(today.getTime() + 30 * 86400000);
+
   for (const d of debts) {
     if (d.status !== "pending" && d.status !== "partial") continue;
     const remaining = d.amount_total - d.amount_paid;
     if (remaining <= 0) continue;
     pendingByCurrency[d.currency] = (pendingByCurrency[d.currency] || 0) + remaining;
+
+    // Vence dentro dos proximos 30 dias?
+    const due = new Date(d.due_date);
+    if (due <= in30Days) {
+      next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + remaining;
+    }
+  }
+
+  // Adicionar ocorrencias recorrentes que caem nos proximos 30 dias
+  // (sem contar a primeira ocorrencia ja inclusa em pendingByCurrency)
+  for (const d of debts) {
+    if (!d.is_recurring || !d.recurrence_interval) continue;
+    if (d.recurrence_end_date && new Date(d.recurrence_end_date) < today) continue;
+    const intervalDays =
+      d.recurrence_interval === "weekly" ? 7 :
+      d.recurrence_interval === "biweekly" ? 14 :
+      d.recurrence_interval === "monthly" ? 30 :
+      d.recurrence_interval === "quarterly" ? 90 :
+      365;
+    // Quantas ocorrencias APOS a primeira (ja contada acima) cabem em 30 dias?
+    const extraOccurrences = Math.floor(30 / intervalDays);
+    if (extraOccurrences > 0) {
+      const perOccurrence = d.amount_total + (d.fixed_commission || 0);
+      next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + perOccurrence * extraOccurrences;
+    }
   }
 
   const overdueCount = debts.filter(
@@ -64,15 +94,22 @@ export default async function DebtsPage() {
       <div className="p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card card-body">
-            <div className="flex items-center gap-3">
+            <div className="flex items-start gap-3">
               <div className="p-2 bg-red-50 rounded-lg"><CreditCard className="text-red-600" size={20} /></div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-xs text-slate-500">A pagar</p>
                 {Object.entries(pendingByCurrency).length === 0 ? (
                   <p className="text-xl font-bold">$0.00</p>
                 ) : (
                   Object.entries(pendingByCurrency).map(([cur, val]) => (
-                    <p key={cur} className="text-lg font-bold">{formatCurrency(val, cur)}</p>
+                    <div key={cur} className="mb-1 last:mb-0">
+                      <p className="text-lg font-bold">{formatCurrency(val, cur)}</p>
+                      {next30ByCurrency[cur] > 0 && (
+                        <p className="text-[10px] text-amber-600 font-medium">
+                          {formatCurrency(next30ByCurrency[cur], cur)} em 30 dias
+                        </p>
+                      )}
+                    </div>
                   ))
                 )}
               </div>
@@ -84,6 +121,7 @@ export default async function DebtsPage() {
               <div>
                 <p className="text-xs text-slate-500">Vence em 30 dias</p>
                 <p className="text-xl font-bold">{next30}</p>
+                <p className="text-[10px] text-slate-400">divida(s)</p>
               </div>
             </div>
           </div>
