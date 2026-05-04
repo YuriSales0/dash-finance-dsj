@@ -10,7 +10,11 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export default async function DebtsPage() {
-  const debts = await repository.getDebts();
+  const [debts, entities] = await Promise.all([
+    repository.getDebts(),
+    repository.getEntities(),
+  ]);
+  const activeEntities = entities.filter((e) => e.id !== "consolidated");
 
   // Total a pagar por moeda (sem conversao)
   const pendingByCurrency: Record<string, number> = {};
@@ -70,7 +74,7 @@ export default async function DebtsPage() {
           </div>
         </div>
 
-        <DebtForm />
+        <DebtForm entities={activeEntities} />
 
         <div className="card">
           <div className="card-header"><h3 className="font-semibold">Dividas</h3></div>
