@@ -6,7 +6,7 @@ import type { Receivable } from "@/types/database";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
-import { Edit3, Loader2, X, Save, AlertTriangle } from "lucide-react";
+import { Edit3, Loader2, X, Save, AlertTriangle, Trash2 } from "lucide-react";
 
 interface Props {
   receivables: Receivable[];
@@ -24,6 +24,7 @@ export function ReceivablesTable({ receivables }: Props) {
     notes: "",
   });
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function openEdit(r: Receivable) {
@@ -74,6 +75,26 @@ export function ReceivablesTable({ receivables }: Props) {
       return;
     }
 
+    setEditing(null);
+    router.refresh();
+  }
+
+  async function handleDelete() {
+    if (!editing) return;
+    if (!confirm(`Deletar o recebivel "${editing.description}"? Esta acao nao pode ser desfeita.`)) return;
+    setDeleting(true);
+    setError(null);
+    const res = await fetch("/api/receivables", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editing.id }),
+    });
+    setDeleting(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: "Erro" }));
+      setError(data.error || `Erro ${res.status}`);
+      return;
+    }
     setEditing(null);
     router.refresh();
   }
@@ -136,17 +157,13 @@ export function ReceivablesTable({ receivables }: Props) {
                     </Badge>
                   </td>
                   <td className="py-3 px-4 text-right">
-                    {r.status !== "paid" ? (
-                      <button
-                        onClick={() => openEdit(r)}
-                        className="text-brand-600 hover:underline text-xs inline-flex items-center gap-1"
-                      >
-                        <Edit3 size={12} />
-                        Atualizar
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">Quitado</span>
-                    )}
+                    <button
+                      onClick={() => openEdit(r)}
+                      className="text-brand-600 hover:underline text-xs inline-flex items-center gap-1"
+                    >
+                      <Edit3 size={12} />
+                      {r.status === "paid" ? "Editar" : "Atualizar"}
+                    </button>
                   </td>
                 </tr>
               );
@@ -256,14 +273,24 @@ export function ReceivablesTable({ receivables }: Props) {
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setEditing(null)} className="btn-secondary inline-flex items-center gap-1">
-                <X size={14} /> Cancelar
+            <div className="flex justify-between gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={loading || deleting}
+                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded transition disabled:opacity-50"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Deletar
               </button>
-              <button onClick={handleSave} disabled={loading} className="btn-primary inline-flex items-center gap-2">
-                {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Salvar
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setEditing(null)} className="btn-secondary inline-flex items-center gap-1">
+                  <X size={14} /> Cancelar
+                </button>
+                <button onClick={handleSave} disabled={loading || deleting} className="btn-primary inline-flex items-center gap-2">
+                  {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Salvar
+                </button>
+              </div>
             </div>
           </div>
         </Modal>

@@ -78,6 +78,7 @@ export interface Repository {
   }): Promise<Receivable[]>;
   createReceivable(data: Partial<Receivable>): Promise<Receivable>;
   updateReceivable(id: number, data: Partial<Receivable>): Promise<void>;
+  deleteReceivable(id: number): Promise<void>;
 
   // Dividas
   getDebts(filters?: { entity_id?: EntityId; status?: string }): Promise<Debt[]>;
@@ -254,6 +255,10 @@ class MockRepository implements Repository {
   async updateReceivable(id: number, data: Partial<Receivable>) {
     const r = MOCK_RECEIVABLES.find((x) => x.id === id);
     if (r) Object.assign(r, data);
+  }
+  async deleteReceivable(id: number) {
+    const idx = MOCK_RECEIVABLES.findIndex((x) => x.id === id);
+    if (idx >= 0) MOCK_RECEIVABLES.splice(idx, 1);
   }
 
   async getDebts(filters: { entity_id?: EntityId; status?: string } = {}) {
@@ -664,6 +669,15 @@ class SupabaseRepository implements Repository {
 
   async updateReceivable(id: number, data: Partial<Receivable>) {
     const { error } = await this.db.from("receivables").update(data).eq("id", id);
+    if (error) throw error;
+  }
+
+  async deleteReceivable(id: number) {
+    // Soltar referencias antes de deletar (invite_codes.receivable_id)
+    await this.db.from("invite_codes").update({ receivable_id: null }).eq("receivable_id", id);
+    // Deletar financings vinculados (caso existam)
+    await this.db.from("financings").delete().eq("receivable_id", id);
+    const { error } = await this.db.from("receivables").delete().eq("id", id);
     if (error) throw error;
   }
 
