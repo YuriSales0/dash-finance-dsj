@@ -220,10 +220,24 @@ function ContractEditor() {
                 if (line.startsWith("##")) {
                   return <h3 key={i} className="font-bold text-base mt-4 mb-2">{line.replace(/^#+\s*/, "")}</h3>;
                 }
-                const html = line
-                  .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-                  .replace(/\{\{(\w+)\}\}/g, '<span class="bg-amber-100 px-1 rounded text-amber-800">[$1]</span>');
-                return <p key={i} className="mb-2" dangerouslySetInnerHTML={{ __html: html }} />;
+                // Renderizar **bold** e {{vars}} sem dangerouslySetInnerHTML
+                const parts: React.ReactNode[] = [];
+                const escaped = line.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                const tokens = escaped.split(/(\*\*.*?\*\*|\{\{\w+\}\})/g);
+                tokens.forEach((token, j) => {
+                  const boldMatch = token.match(/^\*\*(.*?)\*\*$/);
+                  const varMatch = token.match(/^\{\{(\w+)\}\}$/);
+                  if (boldMatch) {
+                    parts.push(<strong key={j}>{boldMatch[1]}</strong>);
+                  } else if (varMatch) {
+                    parts.push(
+                      <span key={j} className="bg-amber-100 px-1 rounded text-amber-800">[{varMatch[1]}]</span>
+                    );
+                  } else if (token) {
+                    parts.push(token.replace(/&lt;/g, "<").replace(/&gt;/g, ">"));
+                  }
+                });
+                return <p key={i} className="mb-2">{parts}</p>;
               })}
             </div>
           </div>

@@ -29,7 +29,10 @@ export interface BankAccount {
   balance_current: number;
   balance_available: number;
   active: boolean;
-  opening_balance?: number;
+  manual_balance?: boolean;
+  balance_updated_at?: string | null;
+  balance_notes?: string | null;
+  opening_balance?: number | null;
   opening_balance_date?: string | null;
 }
 
@@ -62,6 +65,7 @@ export interface Transaction {
   reviewed_by: string | null;
   reviewed_at: string | null;
   notes: string | null;
+  import_batch_id?: number | null;
   created_at: string;
 }
 
@@ -187,6 +191,58 @@ export interface InviteCode {
   used_by: number | null;
   used_at: string | null;
   active: boolean;
+  receivable_id: number | null;
+  investor_name: string | null;
+  investor_email: string | null;
+  message: string | null;
+  created_at: string;
+}
+
+export interface PlatformSetting {
+  key: string;
+  value: string;
+  updated_at: string;
+}
+
+export interface RevolutCredential {
+  id: number;
+  bank_account_id: string;
+  client_id: string;
+  issuer: string;
+  private_key: string;
+  refresh_token: string | null;
+  access_token: string | null;
+  access_token_expires_at: string | null;
+  revolut_account_id: string | null;
+  sandbox: boolean;
+  last_sync_at: string | null;
+  last_sync_count: number | null;
+  last_sync_error: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RevolutOauthState {
+  state: string;
+  bank_account_id: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface ImportBatch {
+  id: number;
+  bank_account_id: string;
+  entity_id: EntityId;
+  format: string;
+  file_name: string | null;
+  total_rows: number | null;
+  rows_normalized: number | null;
+  rows_imported: number | null;
+  rows_skipped_duplicates: number | null;
+  rows_needs_review: number | null;
+  pnl_months_regenerated: string[] | null;
+  intercompany_detected: number | null;
   created_at: string;
 }
 
@@ -379,6 +435,17 @@ export interface Database {
       invite_codes: { Row: InviteCode };
       investor_metrics: { Row: InvestorMetrics };
       operation_updates: { Row: OperationUpdate };
+      user_roles: { Row: UserRoleRow };
+      receivables: { Row: Receivable };
+      debts: { Row: Debt };
+      financings: { Row: Financing };
+      risk_metrics: { Row: RiskMetric };
+      payment_schedule: { Row: PaymentScheduleItem };
+      investor_statements: { Row: InvestorStatement };
+      platform_settings: { Row: PlatformSetting };
+      revolut_credentials: { Row: RevolutCredential };
+      revolut_oauth_state: { Row: RevolutOauthState };
+      import_batches: { Row: ImportBatch };
     };
   };
 }
