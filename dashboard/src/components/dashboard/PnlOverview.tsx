@@ -286,43 +286,34 @@ interface ReconciliationCardProps {
 function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const leakage = cashflow.cash_delta - pnlNet;
+  // Caixa OPERACIONAL: exclui FX/interbank, intercompany, investimentos
+  // (estes sao movimentos legitimos mas nao operacionais — nao deveriam afetar o P&L)
+  const operationalCash =
+    cashflow.revenue_flow +
+    cashflow.cost_flow +
+    cashflow.uncategorized_flow;
 
-  // Movimentos EXPLICADOS (nao-operacionais — esperados, nao sao problema)
-  const explained =
-    cashflow.intercompany_flow +
-    cashflow.transfer_flow +
-    cashflow.investment_flow;
-
-  // Movimentos INEXPLICADOS = uncategorized (problema real)
-  const unexplained = cashflow.uncategorized_flow;
-  const hasProblems = Math.abs(unexplained) > 1;
+  // Diferenca esperada = 0. Se diferente, e por causa de uncategorized.
+  const diff = operationalCash - pnlNet;
+  const hasProblems = Math.abs(cashflow.uncategorized_flow) > 1 || Math.abs(diff) > 1;
   const isHealthy = !hasProblems;
 
-  const items = [
+  // Itens informativos (nao afetam a diferenca, mas e bom ver)
+  const infoItems = [
     {
       label: "Transferencias FX / interbank",
       value: cashflow.transfer_flow,
-      hint: "Movimentos entre suas contas e conversoes cambiais. Esperado em operacao multi-moeda.",
-      ok: true,
+      hint: "Conversoes entre moedas e movimentos entre suas contas. Esperado em operacao multi-moeda.",
     },
     {
       label: "Capital de investidores (SCP)",
       value: cashflow.investment_flow,
-      hint: "Aportes e retornos de investidores. Nao e receita operacional — e capital.",
-      ok: true,
+      hint: "Aportes e retornos de investidores. E capital, nao receita operacional.",
     },
     {
       label: "Intercompany (entre empresas)",
       value: cashflow.intercompany_flow,
-      hint: "Transferencias entre suas empresas. No consolidado deveria ser ~0.",
-      ok: Math.abs(cashflow.intercompany_flow) < 100,
-    },
-    {
-      label: "Sem categoria",
-      value: cashflow.uncategorized_flow,
-      hint: "ATENCAO: afetam o caixa mas NAO entram no P&L. Classifique em /admin/transactions.",
-      ok: Math.abs(cashflow.uncategorized_flow) <= 1,
+      hint: "Transferencias entre suas proprias empresas. No consolidado deveria ser ~0.",
     },
   ];
 
@@ -339,11 +330,11 @@ function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCar
           </h3>
           {isHealthy ? (
             <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-              OK — movimentos nao-operacionais: {formatCurrency(Math.abs(explained))}
+              OK — bate com P&L
             </span>
           ) : (
             <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-              {formatCurrency(Math.abs(unexplained))} sem categoria
+              {formatCurrency(Math.abs(diff))} sem categoria
             </span>
           )}
         </div>
@@ -363,54 +354,66 @@ function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCar
               </p>
             </div>
             <div className="bg-slate-50 rounded p-3">
-              <p className="text-xs text-slate-500">Variacao de Caixa</p>
-              <p className={`text-lg font-bold ${cashflow.cash_delta >= 0 ? "text-green-700" : "text-red-700"}`}>
-                {formatCurrency(cashflow.cash_delta)}
+              <p className="text-xs text-slate-500">Caixa operacional</p>
+              <p className={`text-lg font-bold ${operationalCash >= 0 ? "text-green-700" : "text-red-700"}`}>
+                {formatCurrency(operationalCash)}
               </p>
               <p className="text-[10px] text-slate-400 mt-1">
-                Soma de TODAS as transacoes
+                Receitas + Custos + Uncategorized (sem FX/intercompany/investimentos)
               </p>
             </div>
             <div className={`rounded p-3 ${isHealthy ? "bg-green-50" : "bg-amber-50"}`}>
-              <p className="text-xs text-slate-500">Movimentos nao-operacionais</p>
+              <p className="text-xs text-slate-500">Diferenca (deveria ser 0)</p>
               <p className={`text-lg font-bold ${isHealthy ? "text-green-700" : "text-amber-700"}`}>
-                {formatCurrency(Math.abs(leakage))}
+                {formatCurrency(Math.abs(diff))}
               </p>
               <p className="text-[10px] text-slate-500 mt-1">
                 {isHealthy
-                  ? "100% explicados (FX + investimentos + intercompany)"
-                  : `${formatCurrency(Math.abs(unexplained))} inexplicados (sem categoria)`}
+                  ? "P&L espelha o caixa operacional"
+                  : `${formatCurrency(Math.abs(cashflow.uncategorized_flow))} sem categoria — classifique`}
               </p>
             </div>
           </div>
 
+          {Math.abs(cashflow.uncategorized_flow) > 1 && (
+            <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs">
+              <p className="font-semibold text-amber-900">⚠ Uncategorized: {formatCurrency(cashflow.uncategorized_flow)}</p>
+              <p className="text-amber-700 mt-1">
+                Estas transacoes afetam o caixa mas NAO entram no P&L. <a href="/admin/transactions" className="underline">Classifique em Transacoes</a>.
+              </p>
+            </div>
+          )}
+
           <div className="border-t border-slate-200 pt-3">
             <p className="text-xs font-semibold text-slate-700 mb-2">
-              Composicao dos movimentos nao-operacionais:
+              Movimentos nao-operacionais (informativos, nao afetam diferenca):
+            </p>
+            <p className="text-[10px] text-slate-500 mb-2">
+              Em operacao multi-moeda sem conversao, somas mistas (GBP+EUR+USD) podem parecer altas
+              mas representam movimentos legitimos de cambio entre suas contas.
             </p>
             <div className="space-y-2">
-              {items.filter((i) => Math.abs(i.value) > 0.5).map((item) => (
+              {infoItems.filter((i) => Math.abs(i.value) > 0.5).map((item) => (
                 <div
                   key={item.label}
-                  className={`flex items-start gap-3 p-2 rounded ${
-                    !item.ok ? "bg-amber-50 border border-amber-200" : "bg-slate-50"
-                  }`}
+                  className="flex items-start gap-3 p-2 rounded bg-slate-50"
                 >
                   <div className="flex-1">
-                    <p className={`text-xs font-medium ${!item.ok ? "text-amber-900" : "text-slate-700"}`}>
-                      {item.ok ? "✓" : "⚠"} {item.label}
-                    </p>
+                    <p className="text-xs font-medium text-slate-700">{item.label}</p>
                     <p className="text-[10px] text-slate-500 mt-0.5">{item.hint}</p>
                   </div>
                   <span
                     className={`font-mono text-sm shrink-0 ${
-                      item.value >= 0 ? "text-green-700" : "text-red-700"
+                      item.value >= 0 ? "text-slate-700" : "text-slate-700"
                     }`}
                   >
                     {formatCurrency(item.value)}
                   </span>
                 </div>
               ))}
+              {infoItems.every((i) => Math.abs(i.value) < 0.5) && (
+                <p className="text-xs text-slate-400 italic">Nenhum movimento nao-operacional</p>
+              )}
             </div>
           </div>
         </div>
