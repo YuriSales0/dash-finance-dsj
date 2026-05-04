@@ -360,18 +360,20 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
         <Field label="Data vencimento">
           <input type="date" className="input" value={form.due_date} onChange={(e) => update("due_date", e.target.value)} required />
         </Field>
-        <div className="md:col-span-2 flex items-center gap-3 py-1">
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.is_recurring}
-              onChange={(e) => update("is_recurring", e.target.checked as any)}
-              className="rounded"
-            />
-            Divida recorrente (salario, assinatura, aluguel)
-          </label>
-        </div>
-        {form.is_recurring && (
+        {!isAporte && (
+          <div className="md:col-span-2 flex items-center gap-3 py-1">
+            <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.is_recurring}
+                onChange={(e) => update("is_recurring", e.target.checked as any)}
+                className="rounded"
+              />
+              Divida recorrente (salario, assinatura, aluguel)
+            </label>
+          </div>
+        )}
+        {!isAporte && form.is_recurring && (
           <>
             <Field label="Frequencia">
               <select className="input" value={form.recurrence_interval} onChange={(e) => update("recurrence_interval", e.target.value)}>

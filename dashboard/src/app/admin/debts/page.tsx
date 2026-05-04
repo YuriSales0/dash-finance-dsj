@@ -51,8 +51,10 @@ export default async function DebtsPage() {
 
   // Adicionar ocorrencias recorrentes que caem nos proximos 30 dias
   // (sem contar a primeira ocorrencia ja inclusa em pendingByCurrency)
+  // Aportes de investidor NAO entram aqui — usam interest_payment_interval
   for (const d of debts) {
     if (!d.is_recurring || !d.recurrence_interval) continue;
+    if (d.category === "aporte_investidor") continue;
     if (d.recurrence_end_date && new Date(d.recurrence_end_date) < today) continue;
     const intervalDays =
       d.recurrence_interval === "weekly" ? 7 :
@@ -102,6 +104,7 @@ export default async function DebtsPage() {
   const projEnd = new Date(now.getTime() + projectionDays * 86400000);
   for (const d of debts) {
     if (!d.is_recurring || !d.recurrence_interval) continue;
+    if (d.category === "aporte_investidor") continue;
     if (d.recurrence_end_date && new Date(d.recurrence_end_date) < now) continue;
     const intervalDays =
       d.recurrence_interval === "weekly" ? 7 :
