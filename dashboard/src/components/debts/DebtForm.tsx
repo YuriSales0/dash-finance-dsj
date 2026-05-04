@@ -55,6 +55,14 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
         const ent = entities.find((e) => e.id === value);
         if (ent) next.currency = ent.currency_default;
       }
+      // Aporte de investidor → default DSJ Commerce
+      if (key === "category" && value === "aporte_investidor") {
+        const commerce = entities.find((e) => e.name.toLowerCase().includes("commerce"));
+        if (commerce) {
+          next.entity_id = commerce.id;
+          next.currency = commerce.currency_default;
+        }
+      }
       return next;
     });
   }

@@ -153,10 +153,54 @@ export async function POST(request: Request) {
       if (batchRow) importBatchId = (batchRow as any).id;
     }
 
+    // Buscar dividas de aporte de investidor pendentes para matching
+    // Regra: se o CSV tem uma transacao cujo counterparty/descricao bate com
+    // o credor de uma divida de aporte e o valor e proximo, nao e receita —
+    // e aporte de investidor (ja registrado em dividas)
+    interface InvestorDebt {
+      id: number;
+      creditor: string;
+      amount_total: number;
+      amount_paid: number;
+      currency: string;
+    }
+    let investorDebts: InvestorDebt[] = [];
+    try {
+      const { data: debtsData } = await sb
+        .from("debts")
+        .select("id, creditor, amount_total, amount_paid, currency")
+        .eq("entity_id", entity_id)
+        .eq("category", "aporte_investidor")
+        .in("status", ["pending", "partial"]);
+      investorDebts = (debtsData || []) as InvestorDebt[];
+    } catch {}
+
+    // Helper: checa se uma transacao casa com um aporte de investidor registrado
+    const matchesInvestorDebt = (
+      tx: { counterparty: string | null; description: string; amount_original: number; currency_original: string }
+    ): InvestorDebt | null => {
+      if (tx.amount_original <= 0) return null; // so entradas
+      const txText = ((tx.counterparty || "") + " " + (tx.description || "")).toLowerCase();
+      for (const debt of investorDebts) {
+        if (!debt.creditor) continue;
+        // Nome do credor aparece na descricao/counterparty?
+        const creditorLower = debt.creditor.toLowerCase();
+        if (!txText.includes(creditorLower)) continue;
+        // Valor proximo (tolerancia 2%) e mesma moeda?
+        const remaining = debt.amount_total - debt.amount_paid;
+        if (remaining <= 0) continue;
+        if (debt.currency !== tx.currency_original) continue;
+        const diff = Math.abs(tx.amount_original - remaining) / Math.max(remaining, 0.01);
+        if (diff <= 0.02) return debt;
+      }
+      return null;
+    };
+
     // Classificar e inserir em lotes
     let imported = 0;
     let needsReviewCount = 0;
-    let importedAmountSum = 0; // soma de amount_original das txs efetivamente inseridas
+    let importedAmountSum = 0;
+    let investorMatchCount = 0;
     const batchSize = 20;
 
     for (let i = 0; i < newOnes.length; i += batchSize) {
@@ -164,7 +208,34 @@ export async function POST(request: Request) {
 
       const classified = await Promise.all(
         batch.map(async (tx) => {
-          const cls = await classify(tx, entityName, bankName);
+          // Primeiro: checar se e aporte de investidor (match com divida registrada)
+          const debtMatch = matchesInvestorDebt(tx);
+          let cls;
+          if (debtMatch) {
+            cls = {
+              category_id: "investment_scp_in",
+              classified_by: "rule" as const,
+              confidence: 98,
+              needs_review: false,
+            };
+            investorMatchCount++;
+            // Atualizar a divida: marcar como parcial/pago
+            try {
+              const newPaid = debtMatch.amount_paid + tx.amount_original;
+              const newStatus = newPaid >= debtMatch.amount_total ? "paid" : "partial";
+              await sb
+                .from("debts")
+                .update({
+                  amount_paid: Math.min(newPaid, debtMatch.amount_total),
+                  status: newStatus,
+                })
+                .eq("id", debtMatch.id);
+              // Evitar re-match do mesmo debt nesta importacao
+              debtMatch.amount_paid = newPaid;
+            } catch {}
+          } else {
+            cls = await classify(tx, entityName, bankName);
+          }
           if (cls.needs_review) needsReviewCount++;
           return {
             external_id: tx.external_id,
@@ -293,6 +364,7 @@ export async function POST(request: Request) {
       intercompany_detected: intercompanyDetected,
       balance_delta: balanceDelta,
       new_balance: newBalance,
+      investor_matches: investorMatchCount,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
