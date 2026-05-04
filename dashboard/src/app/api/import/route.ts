@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       currency_override,
       format_override,
       preview_only,
+      opening_balance,
     }: {
       csv_text: string;
       bank_account_id: string;
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
       currency_override?: string;
       format_override?: "revolut" | "mercury" | "generic";
       preview_only?: boolean;
+      opening_balance?: number;
     } = body;
 
     if (!csv_text || !bank_account_id || !entity_id) {
@@ -292,30 +294,40 @@ export async function POST(request: Request) {
       }
     }
 
-    // Atualizar last_synced_at + ajustar saldo incremental:
-    //  - saldo permanece "manual" (user define o ponto de partida em Bancos)
-    //  - cada import incremental SOMA o liquido das NOVAS transacoes
-    //    (newOnes ja exclui duplicatas via dedup intra-CSV + inter-CSV)
+    // Atualizar last_synced_at + ajustar saldo:
+    // Modo A (opening_balance fornecido): saldo = abertura + sum(TODAS as transacoes da conta)
+    // Modo B (sem opening_balance): saldo += delta das novas transacoes (incremental)
     let balanceDelta = 0;
     let newBalance: number | null = null;
+    let usedOpeningBalance = false;
     if (imported > 0 || normalized.length > 0) {
-      // Buscar saldo atual antes
-      const { data: accBefore } = await sb
-        .from("bank_accounts")
-        .select("balance_current")
-        .eq("id", bank_account_id)
-        .single();
-      const before = Number((accBefore as any)?.balance_current ?? 0);
-
-      // Soma APENAS das transacoes efetivamente inseridas (nao conta falhas 23505)
-      balanceDelta = importedAmountSum;
-      // Arredondar pra 2 casas pra evitar drift de floating point
-      balanceDelta = Math.round(balanceDelta * 100) / 100;
-      newBalance = Math.round((before + balanceDelta) * 100) / 100;
+      if (typeof opening_balance === "number") {
+        // Modo A: recalcular saldo a partir da abertura + TODAS as transacoes desta conta
+        const { data: allTxs } = await sb
+          .from("transactions")
+          .select("amount_original")
+          .eq("bank_account_id", bank_account_id);
+        const totalAllTxs = ((allTxs || []) as any[])
+          .reduce((sum, t) => sum + Number(t.amount_original || 0), 0);
+        newBalance = Math.round((opening_balance + totalAllTxs) * 100) / 100;
+        balanceDelta = Math.round(importedAmountSum * 100) / 100;
+        usedOpeningBalance = true;
+      } else {
+        // Modo B: incremental (soma delta das novas ao saldo atual)
+        const { data: accBefore } = await sb
+          .from("bank_accounts")
+          .select("balance_current")
+          .eq("id", bank_account_id)
+          .single();
+        const before = Number((accBefore as any)?.balance_current ?? 0);
+        balanceDelta = Math.round(importedAmountSum * 100) / 100;
+        newBalance = Math.round((before + balanceDelta) * 100) / 100;
+      }
 
       await sb.from("bank_accounts").update({
         last_synced_at: new Date().toISOString(),
         balance_current: newBalance,
+        opening_balance: typeof opening_balance === "number" ? opening_balance : undefined,
       }).eq("id", bank_account_id);
     }
 
@@ -374,6 +386,8 @@ export async function POST(request: Request) {
       intercompany_detected: intercompanyDetected,
       balance_delta: balanceDelta,
       new_balance: newBalance,
+      used_opening_balance: usedOpeningBalance,
+      opening_balance: typeof opening_balance === "number" ? opening_balance : undefined,
       investor_matches: investorMatchCount,
       filtered_out_by_currency: filteredOutByCurrency,
     });

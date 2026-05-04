@@ -61,6 +61,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
   const [fxLoading, setFxLoading] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [openingBalance, setOpeningBalance] = useState("");
   const [expectedBalance, setExpectedBalance] = useState("");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -163,6 +164,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
         fx_rate: Number(fxRate),
         currency_override: currency,
         preview_only: false,
+        opening_balance: openingBalance ? Number(openingBalance) : undefined,
       }),
     });
 
@@ -285,24 +287,43 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
         </div>
       </div>
 
-      {/* Upload */}
+      {/* Saldos */}
       <div className="card">
-        <div className="card-header"><h3 className="font-semibold">2. Saldo de verificacao (opcional)</h3></div>
-          <div className="card-body">
-            <label className="block text-xs font-medium text-slate-700 mb-1">
-              Saldo atual real do banco (pra conferir apos import)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              className="input max-w-xs"
-              value={expectedBalance}
-              onChange={(e) => setExpectedBalance(e.target.value)}
-              placeholder="Ex: 14520.30 (olhe no app do banco)"
-            />
-            <p className="text-[10px] text-slate-400 mt-1">
-              Se preenchido, apos o import o sistema compara o saldo calculado com o real e avisa se diverge.
-            </p>
+        <div className="card-header"><h3 className="font-semibold">2. Saldos de referencia</h3></div>
+          <div className="card-body space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Saldo de abertura (dia 1 do extrato/CSV)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                className="input max-w-xs"
+                value={openingBalance}
+                onChange={(e) => setOpeningBalance(e.target.value)}
+                placeholder="Ex: 52340.00 (saldo no inicio do periodo)"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Saldo que a conta tinha NO PRIMEIRO DIA do CSV. O sistema faz: abertura + transacoes = saldo final.
+                Se vazio, soma as transacoes ao saldo atual da conta (comportamento incremental).
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Saldo atual real do banco (verificacao)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                className="input max-w-xs"
+                value={expectedBalance}
+                onChange={(e) => setExpectedBalance(e.target.value)}
+                placeholder="Ex: 14520.30 (olhe no app do banco agora)"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Se preenchido, apos o import o sistema compara o saldo calculado com o real e avisa se diverge.
+              </p>
+            </div>
           </div>
         </div>
         <div className="card">
