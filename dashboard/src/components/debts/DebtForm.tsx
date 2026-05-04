@@ -65,8 +65,12 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
   });
 
   const isAporte = form.category === "aporte_investidor";
+  const showCommission = isAporte || form.is_recurring;
   const totalReturn = isAporte && Number(form.amount_total) > 0
     ? Number(form.amount_total) * (1 + Number(form.interest_rate_pct) / 100) + Number(form.fixed_commission)
+    : null;
+  const recurringTotal = form.is_recurring && Number(form.amount_total) > 0
+    ? Number(form.amount_total) + Number(form.fixed_commission || 0)
     : null;
 
   function update<K extends keyof typeof form>(key: K, value: typeof form[K]) {
@@ -230,9 +234,9 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
         <Field label="Juros (% ao periodo)">
           <input type="number" step="0.01" className="input" value={form.interest_rate_pct} onChange={(e) => update("interest_rate_pct", e.target.value)} />
         </Field>
-        {isAporte && (
-          <Field label="Comissao fixa">
-            <input type="number" step="0.01" className="input" value={form.fixed_commission} onChange={(e) => update("fixed_commission", e.target.value)} placeholder="Ex: 500" />
+        {showCommission && (
+          <Field label={isAporte ? "Comissao fixa" : "Comissao / bonus fixo"}>
+            <input type="number" step="0.01" className="input" value={form.fixed_commission} onChange={(e) => update("fixed_commission", e.target.value)} placeholder={isAporte ? "Ex: 500" : "Ex: comissao mensal fixa"} />
           </Field>
         )}
         {isAporte && totalReturn !== null && Number(form.amount_total) > 0 && (
@@ -246,6 +250,26 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
               {Number(form.interest_rate_pct) > 0 && <> + {form.interest_rate_pct}% juros</>}
               {Number(form.fixed_commission) > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.fixed_commission))} comissao</>}
             </p>
+          </div>
+        )}
+        {!isAporte && form.is_recurring && recurringTotal !== null && recurringTotal > 0 && (
+          <div className="md:col-span-2 bg-purple-50 border border-purple-200 rounded p-3 text-sm">
+            <p className="text-purple-900">
+              <strong>Custo por recorrencia:</strong>{" "}
+              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(recurringTotal)}
+              {" / "}
+              {form.recurrence_interval === "weekly" ? "semana" :
+               form.recurrence_interval === "biweekly" ? "quinzena" :
+               form.recurrence_interval === "monthly" ? "mes" :
+               form.recurrence_interval === "quarterly" ? "trimestre" : "ano"}
+            </p>
+            {Number(form.fixed_commission) > 0 && (
+              <p className="text-xs text-purple-700 mt-1">
+                = {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.amount_total))} (base)
+                {" + "}
+                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.fixed_commission))} (comissao)
+              </p>
+            )}
           </div>
         )}
         <Field label="Data emissao">

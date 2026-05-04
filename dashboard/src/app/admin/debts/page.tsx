@@ -50,8 +50,9 @@ export default async function DebtsPage() {
       365;
     const occurrences = Math.floor(projectionDays / intervalDays);
     if (occurrences > 0) {
+      const perOccurrence = d.amount_total + (d.fixed_commission || 0);
       projectionByCurrency[d.currency] =
-        (projectionByCurrency[d.currency] || 0) + d.amount_total * occurrences;
+        (projectionByCurrency[d.currency] || 0) + perOccurrence * occurrences;
     }
   }
 

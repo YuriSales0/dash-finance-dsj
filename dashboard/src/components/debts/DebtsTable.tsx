@@ -78,11 +78,14 @@ export function DebtsTable({ debts, entities }: { debts: Debt[]; entities: Entit
                   <td className="py-3 px-4 text-xs text-slate-600">{formatDate(d.due_date)}</td>
                   <td className="py-3 px-4 text-right">
                     <span className="font-mono">{formatCurrency(d.amount_total, d.currency)}</span>
-                    {d.category === "aporte_investidor" && (d.interest_rate_pct || d.fixed_commission) ? (
-                      <div className="text-[10px] text-blue-600 mt-0.5">
+                    {(d.interest_rate_pct || d.fixed_commission) ? (
+                      <div className={`text-[10px] mt-0.5 ${d.category === "aporte_investidor" ? "text-blue-600" : "text-purple-600"}`}>
                         {d.interest_rate_pct ? `${d.interest_rate_pct}% juros` : ""}
                         {d.interest_rate_pct && d.fixed_commission ? " + " : ""}
                         {d.fixed_commission ? `${formatCurrency(d.fixed_commission, d.currency)} comissao` : ""}
+                        {d.is_recurring && (
+                          <> = {formatCurrency(d.amount_total + (d.fixed_commission || 0), d.currency)}/rec</>
+                        )}
                       </div>
                     ) : null}
                   </td>
