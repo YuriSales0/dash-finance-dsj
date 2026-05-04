@@ -3,6 +3,7 @@ import { formatCurrency } from "@/lib/format";
 
 interface Props {
   rows: MonthlyPnl[];
+  currency?: string;
 }
 
 const ROWS_DEF = [
@@ -23,7 +24,7 @@ const ROWS_DEF = [
   { key: "margin_pct", label: "Margem %", group: "pct" },
 ] as const;
 
-export function PnlTable({ rows }: Props) {
+export function PnlTable({ rows, currency = "USD" }: Props) {
   if (rows.length === 0) return <p className="text-slate-400">Sem dados</p>;
 
   return (
@@ -56,7 +57,7 @@ export function PnlTable({ rows }: Props) {
                   <td key={r.month} className="py-2 px-3 text-right font-mono">
                     {def.group === "pct"
                       ? `${(value as number).toFixed(1)}%`
-                      : formatCurrency(value as number)}
+                      : formatCurrency(value as number, currency)}
                   </td>
                 );
               })}

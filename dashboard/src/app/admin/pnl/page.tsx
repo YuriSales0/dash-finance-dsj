@@ -3,7 +3,7 @@ import { Header } from "@/components/layout/Header";
 import { PnlTable } from "@/components/dashboard/PnlTable";
 import { CostBreakdown } from "@/components/dashboard/CostBreakdown";
 import { repository } from "@/lib/data/repository";
-import { entityColors } from "@/lib/format";
+import { entityColors, formatCurrency } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,15 +19,16 @@ export default async function PnlPage({
 
   // Monta lista de seletores: Consolidado + todas as empresas
   const selectorEntities = [
-    { id: "consolidated", name: "Consolidado" },
+    { id: "consolidated", name: "Consolidado", currency_default: "USD" },
     ...entitiesFromDb
       .filter((e) => e.id !== "consolidated")
-      .map((e) => ({ id: e.id, name: e.name })),
+      .map((e) => ({ id: e.id, name: e.name, currency_default: e.currency_default || "USD" })),
   ];
 
   const selectedEntityId = searchParams.entity || "consolidated";
   const selectedEntity =
     selectorEntities.find((e) => e.id === selectedEntityId) || selectorEntities[0];
+  const currency = selectedEntity.currency_default || "USD";
 
   const pnl = await repository.getMonthlyPnl({
     entity_id: selectedEntity.id,
@@ -74,35 +75,38 @@ export default async function PnlPage({
                   <h3 className="font-semibold">Composicao de Custos (mes atual)</h3>
                 </div>
                 <div className="card-body">
-                  <CostBreakdown pnl={currentMonth} />
+                  <CostBreakdown pnl={currentMonth} currency={currency} />
                 </div>
               </div>
               <div className="card">
-                <div className="card-header">
+                <div className="card-header flex items-center justify-between">
                   <h3 className="font-semibold">Resumo do Mes Atual</h3>
+                  <span className="text-xs font-semibold bg-slate-100 px-2 py-1 rounded">
+                    {currency}
+                  </span>
                 </div>
                 <div className="card-body space-y-4">
                   <div className="flex justify-between items-baseline">
                     <span className="text-slate-600">Receita</span>
                     <span className="text-2xl font-bold text-green-600">
-                      ${currentMonth.revenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                      {formatCurrency(currentMonth.revenue, currency)}
                     </span>
                   </div>
                   <div className="flex justify-between items-baseline">
                     <span className="text-slate-600">Custos Totais</span>
                     <span className="text-2xl font-bold text-red-600">
-                      ${currentMonth.total_costs.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                      {formatCurrency(currentMonth.total_costs, currency)}
                     </span>
                   </div>
                   {currentMonth.cost_other > 0 && (
                     <p className="text-xs text-amber-600 -mt-2">
-                      Inclui {`$${currentMonth.cost_other.toLocaleString("en-US", { maximumFractionDigits: 0 })}`} em "outros" (sem categoria + escritorio)
+                      Inclui {formatCurrency(currentMonth.cost_other, currency)} em "outros" (sem categoria + escritorio)
                     </p>
                   )}
                   <div className="flex justify-between items-baseline border-t border-slate-200 pt-4">
                     <span className="text-slate-700 font-medium">Lucro Liquido</span>
                     <span className="text-3xl font-bold text-blue-600">
-                      ${currentMonth.net_profit.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                      {formatCurrency(currentMonth.net_profit, currency)}
                     </span>
                   </div>
                   <div className="flex justify-between items-baseline">
@@ -120,7 +124,7 @@ export default async function PnlPage({
                 <h3 className="font-semibold">P&L (ultimos 6 meses)</h3>
               </div>
               <div className="card-body">
-                <PnlTable rows={recent} />
+                <PnlTable rows={recent} currency={currency} />
               </div>
             </div>
           </>
