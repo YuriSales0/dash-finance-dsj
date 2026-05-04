@@ -82,7 +82,9 @@ export default async function DebtsPage() {
   const recurringCount = debts.filter((d) => d.is_recurring).length;
 
   // Classificar dividas por prazo de vencimento (TODOS os pagamentos futuros, nao so o due_date)
-  // Curto: dias [0, 30] | Medio: (30, 150] | Longo: (150, infinito) | Atrasadas: dias < 0
+  // Curto: dias [0, 35] | Medio: (35, 150] | Longo: (150, infinito) | Atrasadas: dias < 0
+  // Curto = 35d (nao 30d) pra captar pagamentos mensais com calendar drift
+  // (ex: salario com due_date 31 dias depois do issue, mes com 31 dias)
   type TermBucket = Record<string, number>;
   const shortTerm: TermBucket = {};
   const mediumTerm: TermBucket = {};
@@ -91,7 +93,7 @@ export default async function DebtsPage() {
 
   function bucketFor(daysFromNow: number): TermBucket {
     if (daysFromNow < 0) return overdueByCurrency;
-    if (daysFromNow <= 30) return shortTerm;
+    if (daysFromNow <= 35) return shortTerm;
     if (daysFromNow <= 150) return mediumTerm;
     return longTerm;
   }
@@ -170,7 +172,8 @@ export default async function DebtsPage() {
   }
 
   // Popular pendingByCurrency e next30ByCurrency a partir dos buckets
-  // (consistencia: A pagar = soma dos cards de prazo)
+  // "A pagar" agora = obrigacoes IMEDIATAS (atrasadas + curto prazo)
+  // Para projecao de longo prazo, ver os cards de Medio e Longo separadamente.
   const allCurrencies = Array.from(new Set<string>([
     ...Object.keys(shortTerm),
     ...Object.keys(mediumTerm),
@@ -178,15 +181,9 @@ export default async function DebtsPage() {
     ...Object.keys(overdueByCurrency),
   ]));
   for (const cur of allCurrencies) {
-    const total =
-      (overdueByCurrency[cur] || 0) +
-      (shortTerm[cur] || 0) +
-      (mediumTerm[cur] || 0) +
-      (longTerm[cur] || 0);
-    if (total > 0) pendingByCurrency[cur] = total;
-
-    const next30 = (overdueByCurrency[cur] || 0) + (shortTerm[cur] || 0);
-    if (next30 > 0) next30ByCurrency[cur] = next30;
+    const immediate = (overdueByCurrency[cur] || 0) + (shortTerm[cur] || 0);
+    if (immediate > 0) pendingByCurrency[cur] = immediate;
+    if (immediate > 0) next30ByCurrency[cur] = immediate;
   }
 
   return (
@@ -202,13 +199,13 @@ export default async function DebtsPage() {
           />
           <TermCard
             label="Curto prazo"
-            sublabel="≤ 30 dias"
+            sublabel="≤ 35 dias"
             data={shortTerm}
             color="amber"
           />
           <TermCard
             label="Medio prazo"
-            sublabel="31-150 dias"
+            sublabel="36-150 dias"
             data={mediumTerm}
             color="blue"
           />

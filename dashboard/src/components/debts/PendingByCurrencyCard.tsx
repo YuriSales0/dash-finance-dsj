@@ -46,11 +46,7 @@ export function PendingByCurrencyCard({ debts, pendingByCurrency, next30ByCurren
                   >
                     {formatCurrency(val, cur)}
                   </button>
-                  {next30ByCurrency[cur] > 0 && (
-                    <p className="text-[10px] text-amber-600 font-medium">
-                      {formatCurrency(next30ByCurrency[cur], cur)} em 30 dias
-                    </p>
-                  )}
+                  <p className="text-[10px] text-slate-400">obrigacoes imediatas (35 dias)</p>
                 </div>
               ))
             )}
