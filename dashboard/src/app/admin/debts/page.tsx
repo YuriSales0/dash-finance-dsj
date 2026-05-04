@@ -3,7 +3,8 @@ import { repository } from "@/lib/data/repository";
 import { formatCurrency } from "@/lib/format";
 import { DebtForm } from "@/components/debts/DebtForm";
 import { DebtsTable } from "@/components/debts/DebtsTable";
-import { CreditCard, AlertTriangle, Calendar } from "lucide-react";
+import { PendingByCurrencyCard } from "@/components/debts/PendingByCurrencyCard";
+import { AlertTriangle, Calendar } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -93,28 +94,11 @@ export default async function DebtsPage() {
       <Header title="Dividas" subtitle="Obrigacoes a pagar + projecao futura" />
       <div className="p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="card card-body">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-red-50 rounded-lg"><CreditCard className="text-red-600" size={20} /></div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-slate-500">A pagar</p>
-                {Object.entries(pendingByCurrency).length === 0 ? (
-                  <p className="text-xl font-bold">$0.00</p>
-                ) : (
-                  Object.entries(pendingByCurrency).map(([cur, val]) => (
-                    <div key={cur} className="mb-1 last:mb-0">
-                      <p className="text-lg font-bold">{formatCurrency(val, cur)}</p>
-                      {next30ByCurrency[cur] > 0 && (
-                        <p className="text-[10px] text-amber-600 font-medium">
-                          {formatCurrency(next30ByCurrency[cur], cur)} em 30 dias
-                        </p>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <PendingByCurrencyCard
+            debts={debts}
+            pendingByCurrency={pendingByCurrency}
+            next30ByCurrency={next30ByCurrency}
+          />
           <div className="card card-body">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-50 rounded-lg"><Calendar className="text-amber-600" size={20} /></div>
