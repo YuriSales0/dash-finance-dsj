@@ -286,34 +286,43 @@ interface ReconciliationCardProps {
 function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // Diferenca entre o caixa real e o P&L do periodo
-  // cash_delta = pnl_net + intercompany + transfers + uncategorized + investments
-  // entao "leakage" = cash_delta - pnl_net = intercompany + transfers + uncategorized + investments
   const leakage = cashflow.cash_delta - pnlNet;
-  const matchesPnL = Math.abs(leakage) < 0.5;
 
-  // Decomposicao do leakage (cada item soma pra leakage)
+  // Movimentos EXPLICADOS (nao-operacionais — esperados, nao sao problema)
+  const explained =
+    cashflow.intercompany_flow +
+    cashflow.transfer_flow +
+    cashflow.investment_flow;
+
+  // Movimentos INEXPLICADOS = uncategorized (problema real)
+  const unexplained = cashflow.uncategorized_flow;
+  const hasProblems = Math.abs(unexplained) > 1;
+  const isHealthy = !hasProblems;
+
   const items = [
+    {
+      label: "Transferencias FX / interbank",
+      value: cashflow.transfer_flow,
+      hint: "Movimentos entre suas contas e conversoes cambiais. Esperado em operacao multi-moeda.",
+      ok: true,
+    },
+    {
+      label: "Capital de investidores (SCP)",
+      value: cashflow.investment_flow,
+      hint: "Aportes e retornos de investidores. Nao e receita operacional — e capital.",
+      ok: true,
+    },
     {
       label: "Intercompany (entre empresas)",
       value: cashflow.intercompany_flow,
-      hint: "No consolidado deveria ser ~0 (entradas + saidas se cancelam). Por entidade isolada nao zera.",
-    },
-    {
-      label: "Transferencias internas (interbank/FX)",
-      value: cashflow.transfer_flow,
-      hint: "Movimentos entre suas contas — nao afetam P&L mas movem o caixa.",
+      hint: "Transferencias entre suas empresas. No consolidado deveria ser ~0.",
+      ok: Math.abs(cashflow.intercompany_flow) < 100,
     },
     {
       label: "Sem categoria",
       value: cashflow.uncategorized_flow,
-      hint: "PROBLEMA: estas transacoes afetam o caixa mas NAO entram no P&L. Classifique em /admin/transactions.",
-      problem: Math.abs(cashflow.uncategorized_flow) > 1,
-    },
-    {
-      label: "Aportes/retornos de investimento",
-      value: cashflow.investment_flow,
-      hint: "Capital de investidores SCP — entradas de caixa que nao sao receita operacional.",
+      hint: "ATENCAO: afetam o caixa mas NAO entram no P&L. Classifique em /admin/transactions.",
+      ok: Math.abs(cashflow.uncategorized_flow) <= 1,
     },
   ];
 
@@ -324,18 +333,17 @@ function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCar
         className="w-full card-header flex items-center justify-between hover:bg-slate-50 transition"
       >
         <div className="flex items-center gap-2">
-          <Scale size={16} className={matchesPnL ? "text-green-600" : "text-amber-600"} />
+          <Scale size={16} className={isHealthy ? "text-green-600" : "text-amber-600"} />
           <h3 className="font-semibold text-sm">
             Reconciliacao P&L vs Caixa — {periodLabel}
           </h3>
-          {!matchesPnL && (
-            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-              Diferenca: {formatCurrency(leakage)}
-            </span>
-          )}
-          {matchesPnL && (
+          {isHealthy ? (
             <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-              Bate
+              OK — movimentos nao-operacionais: {formatCurrency(Math.abs(explained))}
+            </span>
+          ) : (
+            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+              {formatCurrency(Math.abs(unexplained))} sem categoria
             </span>
           )}
         </div>
@@ -351,7 +359,7 @@ function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCar
                 {formatCurrency(pnlNet)}
               </p>
               <p className="text-[10px] text-slate-400 mt-1">
-                Receita - Despesas (apenas categorizadas)
+                Receita - Despesas (operacional)
               </p>
             </div>
             <div className="bg-slate-50 rounded p-3">
@@ -360,35 +368,37 @@ function ReconciliationCard({ pnlNet, cashflow, periodLabel }: ReconciliationCar
                 {formatCurrency(cashflow.cash_delta)}
               </p>
               <p className="text-[10px] text-slate-400 mt-1">
-                Soma de TODAS as transacoes (caixa real)
+                Soma de TODAS as transacoes
               </p>
             </div>
-            <div className={`rounded p-3 ${matchesPnL ? "bg-green-50" : "bg-amber-50"}`}>
-              <p className="text-xs text-slate-500">Diferenca (leakage)</p>
-              <p className={`text-lg font-bold ${matchesPnL ? "text-green-700" : "text-amber-700"}`}>
-                {formatCurrency(leakage)}
+            <div className={`rounded p-3 ${isHealthy ? "bg-green-50" : "bg-amber-50"}`}>
+              <p className="text-xs text-slate-500">Movimentos nao-operacionais</p>
+              <p className={`text-lg font-bold ${isHealthy ? "text-green-700" : "text-amber-700"}`}>
+                {formatCurrency(Math.abs(leakage))}
               </p>
               <p className="text-[10px] text-slate-500 mt-1">
-                {matchesPnL ? "P&L espelha o caixa" : "Diferenca explicada abaixo"}
+                {isHealthy
+                  ? "100% explicados (FX + investimentos + intercompany)"
+                  : `${formatCurrency(Math.abs(unexplained))} inexplicados (sem categoria)`}
               </p>
             </div>
           </div>
 
           <div className="border-t border-slate-200 pt-3">
             <p className="text-xs font-semibold text-slate-700 mb-2">
-              Decomposicao da diferenca (cada linha soma pro leakage):
+              Composicao dos movimentos nao-operacionais:
             </p>
             <div className="space-y-2">
-              {items.map((item) => (
+              {items.filter((i) => Math.abs(i.value) > 0.5).map((item) => (
                 <div
                   key={item.label}
                   className={`flex items-start gap-3 p-2 rounded ${
-                    item.problem ? "bg-amber-50 border border-amber-200" : "bg-white"
+                    !item.ok ? "bg-amber-50 border border-amber-200" : "bg-slate-50"
                   }`}
                 >
                   <div className="flex-1">
-                    <p className={`text-xs font-medium ${item.problem ? "text-amber-900" : "text-slate-700"}`}>
-                      {item.label}
+                    <p className={`text-xs font-medium ${!item.ok ? "text-amber-900" : "text-slate-700"}`}>
+                      {item.ok ? "✓" : "⚠"} {item.label}
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5">{item.hint}</p>
                   </div>
