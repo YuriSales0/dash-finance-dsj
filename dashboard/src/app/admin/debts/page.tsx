@@ -30,11 +30,23 @@ export default async function DebtsPage() {
     if (remaining <= 0) continue;
     pendingByCurrency[d.currency] = (pendingByCurrency[d.currency] || 0) + remaining;
 
-    // Vence dentro dos proximos 30 dias?
+    // Aportes com juros parcelados: no 30 dias so entra o principal se
+    // o vencimento FINAL cai em 30 dias. Parcelas de juros sao computadas
+    // no loop separado abaixo.
+    const isAporteParcelado = d.category === "aporte_investidor" && !!d.interest_payment_interval;
+
     const due = new Date(d.due_date);
     if (due <= in30Days) {
-      next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + remaining;
+      if (isAporteParcelado) {
+        // So o balloon (principal + comissao) entra — quando o vencimento final cai em 30 dias
+        const balloon = remaining + (d.fixed_commission || 0);
+        next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + balloon;
+      } else {
+        next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + remaining;
+      }
     }
+    // Se aporte parcelado com vencimento > 30 dias: nao adiciona nada aqui.
+    // As parcelas de juros sao somadas no loop "Aportes com juros parcelados" abaixo.
   }
 
   // Adicionar ocorrencias recorrentes que caem nos proximos 30 dias
