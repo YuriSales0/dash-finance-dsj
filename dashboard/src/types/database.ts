@@ -326,6 +326,7 @@ export interface Debt {
   issue_date: string;
   due_date: string;
   interest_rate_pct: number | null;
+  fixed_commission?: number;
   status: DebtStatus;
   category: string | null;
   source: "manual" | "transaction" | "supplier";

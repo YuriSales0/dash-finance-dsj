@@ -99,12 +99,25 @@ export default async function DebtsPage() {
                     <tr key={d.id} className="border-b border-slate-100">
                       <td className="py-3 px-4">
                         <div className="font-medium">{d.description}</div>
-                        {d.category && <div className="text-xs text-slate-500">{d.category}</div>}
+                        {d.category === "aporte_investidor" ? (
+                          <div className="text-xs text-blue-600">Aporte de investidor</div>
+                        ) : d.category ? (
+                          <div className="text-xs text-slate-500">{d.category}</div>
+                        ) : null}
                       </td>
                       <td className="py-3 px-4 text-xs text-slate-600">{d.creditor || "-"}</td>
                       <td className="py-3 px-4 text-xs text-slate-600">{entityNames[d.entity_id]}</td>
                       <td className="py-3 px-4 text-xs text-slate-600">{formatDate(d.due_date)}</td>
-                      <td className="py-3 px-4 text-right font-mono">{formatCurrency(d.amount_total, d.currency)}</td>
+                      <td className="py-3 px-4 text-right">
+                        <span className="font-mono">{formatCurrency(d.amount_total, d.currency)}</span>
+                        {d.category === "aporte_investidor" && (d.interest_rate_pct || d.fixed_commission) ? (
+                          <div className="text-[10px] text-blue-600 mt-0.5">
+                            {d.interest_rate_pct ? `${d.interest_rate_pct}% juros` : ""}
+                            {d.interest_rate_pct && d.fixed_commission ? " + " : ""}
+                            {d.fixed_commission ? `${formatCurrency(d.fixed_commission, d.currency)} comissao` : ""}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="py-3 px-4 text-center">
                         <Badge variant={
                           d.status === "paid" ? "success" :

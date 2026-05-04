@@ -44,9 +44,15 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
     issue_date: new Date().toISOString().slice(0, 10),
     due_date: "",
     interest_rate_pct: "0",
+    fixed_commission: "0",
     category: "",
     notes: "",
   });
+
+  const isAporte = form.category === "aporte_investidor";
+  const totalReturn = isAporte && Number(form.amount_total) > 0
+    ? Number(form.amount_total) * (1 + Number(form.interest_rate_pct) / 100) + Number(form.fixed_commission)
+    : null;
 
   function update<K extends keyof typeof form>(key: K, value: typeof form[K]) {
     setForm((f) => {
@@ -79,6 +85,7 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
         ...form,
         amount_total: Number(form.amount_total),
         interest_rate_pct: Number(form.interest_rate_pct),
+        fixed_commission: Number(form.fixed_commission) || 0,
         creditor: form.creditor || null,
         category: form.category || null,
         notes: form.notes || null,
@@ -149,6 +156,24 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
         <Field label="Juros (% ao periodo)">
           <input type="number" step="0.01" className="input" value={form.interest_rate_pct} onChange={(e) => update("interest_rate_pct", e.target.value)} />
         </Field>
+        {isAporte && (
+          <Field label="Comissao fixa">
+            <input type="number" step="0.01" className="input" value={form.fixed_commission} onChange={(e) => update("fixed_commission", e.target.value)} placeholder="Ex: 500" />
+          </Field>
+        )}
+        {isAporte && totalReturn !== null && Number(form.amount_total) > 0 && (
+          <div className="md:col-span-2 bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+            <p className="text-blue-900">
+              <strong>Retorno total ao investidor:</strong>{" "}
+              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(totalReturn)}
+            </p>
+            <p className="text-xs text-blue-700 mt-1">
+              = {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.amount_total))} (aporte)
+              {Number(form.interest_rate_pct) > 0 && <> + {form.interest_rate_pct}% juros</>}
+              {Number(form.fixed_commission) > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.fixed_commission))} comissao</>}
+            </p>
+          </div>
+        )}
         <Field label="Data emissao">
           <input type="date" className="input" value={form.issue_date} onChange={(e) => update("issue_date", e.target.value)} required />
         </Field>
