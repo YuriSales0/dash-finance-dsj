@@ -209,6 +209,7 @@ REGRAS:
 // Padroes de descricao que indicam cambio (FX exchange) — multi-idioma
 // Inclui variantes de inflow e outflow
 const FX_PATTERNS = [
+  /→/,                          // Revolut: "Main · GBP → Main · EUR"
   /\bexchange\b/i,
   /\bexchanged\b/i,
   /\bcurrency conversion\b/i,
