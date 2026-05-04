@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
     const sb = createServerClient();
 
-    // Buscar nomes para classificacao
+    // Buscar nomes para classificacao + moeda da conta para filtragem
     const { data: entityRow } = await sb
       .from("entities")
       .select("name")
@@ -92,11 +92,21 @@ export async function POST(request: Request) {
       .single();
     const { data: bankRow } = await sb
       .from("bank_accounts")
-      .select("bank_name")
+      .select("bank_name, currency")
       .eq("id", bank_account_id)
       .single();
     const entityName = (entityRow as { name: string } | null)?.name || entity_id;
-    const bankName = (bankRow as { bank_name: string } | null)?.bank_name || "Bank";
+    const bankInfo = bankRow as { bank_name: string; currency: string } | null;
+    const bankName = bankInfo?.bank_name || "Bank";
+    const accountCurrency = bankInfo?.currency || csvCurrency;
+
+    // Filtrar transacoes que nao batem com a moeda da conta
+    // (CSV multi-moeda do Revolut pode ter linhas em GBP misturadas em conta EUR)
+    const beforeFilter = normalized.length;
+    normalized = normalized.filter(
+      (t) => t.currency_original.toUpperCase() === accountCurrency.toUpperCase()
+    );
+    const filteredOutByCurrency = beforeFilter - normalized.length;
 
     // Dedup INTRA-CSV (Revolut exporta multiplas legs com mesmo ID)
     const intraSet = new Set<string>();
@@ -365,6 +375,7 @@ export async function POST(request: Request) {
       balance_delta: balanceDelta,
       new_balance: newBalance,
       investor_matches: investorMatchCount,
+      filtered_out_by_currency: filteredOutByCurrency,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });

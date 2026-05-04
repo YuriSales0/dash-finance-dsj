@@ -206,11 +206,40 @@ REGRAS:
   }
 }
 
+// Padroes de descricao que indicam cambio (FX exchange) — multi-idioma
+const FX_PATTERNS = [
+  /\bexchange\b/i,
+  /\bexchanged\b/i,
+  /\bcurrency conversion\b/i,
+  /\bconversion\b/i,
+  /\bconverted\b/i,
+  /\bconvers[aã]o\b/i,
+  /\bc[aâ]mbio\b/i,
+  /\bfx\b/i,
+  /\b(gbp|usd|eur|brl) to (gbp|usd|eur|brl)\b/i,
+  /from (gbp|usd|eur|brl) to (gbp|usd|eur|brl)/i,
+];
+
+function looksLikeFx(tx: NormalizedTransaction): boolean {
+  const text = `${tx.description || ""} ${tx.counterparty || ""}`;
+  return FX_PATTERNS.some((p) => p.test(text));
+}
+
 export async function classify(
   tx: NormalizedTransaction,
   entityName: string,
   bankName: string
 ): Promise<ClassificationResult> {
+  // Cambio: nao afeta P&L, mas movimenta saldo
+  if (looksLikeFx(tx)) {
+    return {
+      category_id: "transfer_fx",
+      classified_by: "rule",
+      confidence: 95,
+      needs_review: false,
+    };
+  }
+
   // Regra de negocio: entradas em Mercury ou Airwallex sao SEMPRE receita
   // (payouts de Shopify/Stripe, pagamentos de clientes — nunca intercompany)
   const bank = bankName.toLowerCase();
