@@ -34,11 +34,34 @@ export default async function DebtsPage() {
     return days >= 0 && days <= 30;
   }).length;
 
+  // Projecao: quanto as recorrentes vao custar nos proximos 90 dias
+  const projectionDays = 90;
+  const projectionByCurrency: Record<string, number> = {};
+  const now = new Date();
+  const projEnd = new Date(now.getTime() + projectionDays * 86400000);
+  for (const d of debts) {
+    if (!d.is_recurring || !d.recurrence_interval) continue;
+    if (d.recurrence_end_date && new Date(d.recurrence_end_date) < now) continue;
+    const intervalDays =
+      d.recurrence_interval === "weekly" ? 7 :
+      d.recurrence_interval === "biweekly" ? 14 :
+      d.recurrence_interval === "monthly" ? 30 :
+      d.recurrence_interval === "quarterly" ? 90 :
+      365;
+    const occurrences = Math.floor(projectionDays / intervalDays);
+    if (occurrences > 0) {
+      projectionByCurrency[d.currency] =
+        (projectionByCurrency[d.currency] || 0) + d.amount_total * occurrences;
+    }
+  }
+
+  const recurringCount = debts.filter((d) => d.is_recurring).length;
+
   return (
     <>
-      <Header title="Dividas" subtitle="Obrigacoes a pagar" />
+      <Header title="Dividas" subtitle="Obrigacoes a pagar + projecao futura" />
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card card-body">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-red-50 rounded-lg"><CreditCard className="text-red-600" size={20} /></div>
@@ -72,6 +95,24 @@ export default async function DebtsPage() {
               </div>
             </div>
           </div>
+          <div className="card card-body">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-50 rounded-lg"><Calendar className="text-purple-600" size={20} /></div>
+              <div>
+                <p className="text-xs text-slate-500">Projecao 90 dias (recorrentes)</p>
+                {Object.entries(projectionByCurrency).length === 0 ? (
+                  <p className="text-lg font-bold text-slate-400">{recurringCount === 0 ? "Nenhuma" : "$0.00"}</p>
+                ) : (
+                  Object.entries(projectionByCurrency).map(([cur, val]) => (
+                    <p key={cur} className="text-lg font-bold text-purple-700">{formatCurrency(val, cur)}</p>
+                  ))
+                )}
+                {recurringCount > 0 && (
+                  <p className="text-[10px] text-slate-500">{recurringCount} divida(s) recorrente(s)</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         <DebtForm entities={activeEntities} />
@@ -99,11 +140,22 @@ export default async function DebtsPage() {
                     <tr key={d.id} className="border-b border-slate-100">
                       <td className="py-3 px-4">
                         <div className="font-medium">{d.description}</div>
-                        {d.category === "aporte_investidor" ? (
-                          <div className="text-xs text-blue-600">Aporte de investidor</div>
-                        ) : d.category ? (
-                          <div className="text-xs text-slate-500">{d.category}</div>
-                        ) : null}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {d.category === "aporte_investidor" ? (
+                            <span className="text-xs text-blue-600">Aporte de investidor</span>
+                          ) : d.category ? (
+                            <span className="text-xs text-slate-500">{d.category}</span>
+                          ) : null}
+                          {d.is_recurring && (
+                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                              {d.recurrence_interval === "weekly" ? "Semanal" :
+                               d.recurrence_interval === "biweekly" ? "Quinzenal" :
+                               d.recurrence_interval === "monthly" ? "Mensal" :
+                               d.recurrence_interval === "quarterly" ? "Trimestral" :
+                               d.recurrence_interval === "yearly" ? "Anual" : "Recorrente"}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-xs text-slate-600">{d.creditor || "-"}</td>
                       <td className="py-3 px-4 text-xs text-slate-600">{entityNames[d.entity_id]}</td>

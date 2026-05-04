@@ -45,6 +45,9 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
     due_date: "",
     interest_rate_pct: "0",
     fixed_commission: "0",
+    is_recurring: false,
+    recurrence_interval: "monthly" as string,
+    recurrence_end_date: "",
     category: "",
     notes: "",
   });
@@ -86,6 +89,9 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
         amount_total: Number(form.amount_total),
         interest_rate_pct: Number(form.interest_rate_pct),
         fixed_commission: Number(form.fixed_commission) || 0,
+        is_recurring: form.is_recurring,
+        recurrence_interval: form.is_recurring ? form.recurrence_interval : null,
+        recurrence_end_date: form.is_recurring && form.recurrence_end_date ? form.recurrence_end_date : null,
         creditor: form.creditor || null,
         category: form.category || null,
         notes: form.notes || null,
@@ -180,6 +186,33 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
         <Field label="Data vencimento">
           <input type="date" className="input" value={form.due_date} onChange={(e) => update("due_date", e.target.value)} required />
         </Field>
+        <div className="md:col-span-2 flex items-center gap-3 py-1">
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.is_recurring}
+              onChange={(e) => update("is_recurring", e.target.checked as any)}
+              className="rounded"
+            />
+            Divida recorrente (salario, assinatura, aluguel)
+          </label>
+        </div>
+        {form.is_recurring && (
+          <>
+            <Field label="Frequencia">
+              <select className="input" value={form.recurrence_interval} onChange={(e) => update("recurrence_interval", e.target.value)}>
+                <option value="weekly">Semanal</option>
+                <option value="biweekly">Quinzenal</option>
+                <option value="monthly">Mensal</option>
+                <option value="quarterly">Trimestral</option>
+                <option value="yearly">Anual</option>
+              </select>
+            </Field>
+            <Field label="Ate quando? (vazio = indefinido)">
+              <input type="date" className="input" value={form.recurrence_end_date} onChange={(e) => update("recurrence_end_date", e.target.value)} />
+            </Field>
+          </>
+        )}
         <Field label="Notas" full>
           <textarea className="input" rows={2} value={form.notes} onChange={(e) => update("notes", e.target.value)} placeholder="Observacoes opcionais..." />
         </Field>
