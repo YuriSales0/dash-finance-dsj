@@ -142,59 +142,134 @@ export default async function DebtsPage() {
 
   const recurringCount = debts.filter((d) => d.is_recurring).length;
 
+  // Classificar dividas por prazo de vencimento
+  type TermBucket = Record<string, number>;
+  const shortTerm: TermBucket = {};  // <= 30 dias
+  const mediumTerm: TermBucket = {}; // 31-150 dias
+  const longTerm: TermBucket = {};   // > 150 dias
+  const overdueByCurrency: TermBucket = {};
+
+  for (const d of debts) {
+    if (d.status === "paid") continue;
+    const remaining = d.amount_total - d.amount_paid;
+    if (remaining <= 0) continue;
+    const daysUntilDue = (new Date(d.due_date).getTime() - today.getTime()) / 86400000;
+
+    if (daysUntilDue < 0) {
+      overdueByCurrency[d.currency] = (overdueByCurrency[d.currency] || 0) + remaining;
+    } else if (daysUntilDue <= 30) {
+      shortTerm[d.currency] = (shortTerm[d.currency] || 0) + remaining;
+    } else if (daysUntilDue <= 150) {
+      mediumTerm[d.currency] = (mediumTerm[d.currency] || 0) + remaining;
+    } else {
+      longTerm[d.currency] = (longTerm[d.currency] || 0) + remaining;
+    }
+  }
+
   return (
     <>
       <Header title="Dividas" subtitle="Obrigacoes a pagar + projecao futura" />
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Cards de classificacao por prazo */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <PendingByCurrencyCard
             debts={debts}
             pendingByCurrency={pendingByCurrency}
             next30ByCurrency={next30ByCurrency}
           />
-          <div className="card card-body">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-50 rounded-lg"><Calendar className="text-amber-600" size={20} /></div>
-              <div>
-                <p className="text-xs text-slate-500">Vence em 30 dias</p>
-                <p className="text-xl font-bold">{next30}</p>
-                <p className="text-[10px] text-slate-400">divida(s)</p>
-              </div>
-            </div>
-          </div>
-          <div className="card card-body">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg"><AlertTriangle className="text-red-700" size={20} /></div>
-              <div>
-                <p className="text-xs text-slate-500">Atrasadas</p>
-                <p className="text-xl font-bold">{overdueCount}</p>
-              </div>
-            </div>
-          </div>
-          <div className="card card-body">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-50 rounded-lg"><Calendar className="text-purple-600" size={20} /></div>
-              <div>
-                <p className="text-xs text-slate-500">Projecao 90 dias (recorrentes)</p>
-                {Object.entries(projectionByCurrency).length === 0 ? (
-                  <p className="text-lg font-bold text-slate-400">{recurringCount === 0 ? "Nenhuma" : "$0.00"}</p>
-                ) : (
-                  Object.entries(projectionByCurrency).map(([cur, val]) => (
-                    <p key={cur} className="text-lg font-bold text-purple-700">{formatCurrency(val, cur)}</p>
-                  ))
-                )}
-                {recurringCount > 0 && (
-                  <p className="text-[10px] text-slate-500">{recurringCount} divida(s) recorrente(s)</p>
-                )}
-              </div>
-            </div>
-          </div>
+          <TermCard
+            label="Curto prazo"
+            sublabel="≤ 30 dias"
+            data={shortTerm}
+            color="amber"
+          />
+          <TermCard
+            label="Medio prazo"
+            sublabel="31-150 dias"
+            data={mediumTerm}
+            color="blue"
+          />
+          <TermCard
+            label="Longo prazo"
+            sublabel="> 150 dias"
+            data={longTerm}
+            color="slate"
+          />
+          <TermCard
+            label="Atrasadas"
+            sublabel="vencidas"
+            data={overdueByCurrency}
+            color="red"
+          />
         </div>
+
+        {/* Projecao recorrentes + parcelas de juros */}
+        {(Object.keys(projectionByCurrency).length > 0 || recurringCount > 0) && (
+          <div className="card card-body bg-purple-50 border-purple-200">
+            <p className="text-xs text-purple-700 font-medium mb-1">Projecao 90 dias (recorrentes + parcelas de juros)</p>
+            {Object.entries(projectionByCurrency).length === 0 ? (
+              <p className="text-sm text-slate-400">Nenhuma obrigacao recorrente</p>
+            ) : (
+              <div className="flex gap-4 flex-wrap">
+                {Object.entries(projectionByCurrency).map(([cur, val]) => (
+                  <p key={cur} className="text-lg font-bold text-purple-700">{formatCurrency(val, cur)}</p>
+                ))}
+              </div>
+            )}
+            {recurringCount > 0 && (
+              <p className="text-[10px] text-purple-600 mt-1">{recurringCount} divida(s) recorrente(s) ativas</p>
+            )}
+          </div>
+        )}
 
         <DebtForm entities={activeEntities} />
 
         <DebtsTable debts={debts} entities={activeEntities} />
       </div>
     </>
+  );
+}
+
+const TERM_COLORS: Record<string, { bg: string; icon: string; text: string }> = {
+  amber: { bg: "bg-amber-50", icon: "text-amber-600", text: "text-amber-700" },
+  blue: { bg: "bg-blue-50", icon: "text-blue-600", text: "text-blue-700" },
+  slate: { bg: "bg-slate-100", icon: "text-slate-500", text: "text-slate-700" },
+  red: { bg: "bg-red-50", icon: "text-red-600", text: "text-red-700" },
+};
+
+function TermCard({
+  label,
+  sublabel,
+  data,
+  color,
+}: {
+  label: string;
+  sublabel: string;
+  data: Record<string, number>;
+  color: string;
+}) {
+  const c = TERM_COLORS[color] || TERM_COLORS.slate;
+  const entries = Object.entries(data);
+  return (
+    <div className="card card-body">
+      <div className="flex items-start gap-3">
+        <div className={`p-2 rounded-lg ${c.bg}`}>
+          <Calendar className={c.icon} size={18} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-slate-500">{label}</p>
+          <p className="text-[10px] text-slate-400">{sublabel}</p>
+          {entries.length === 0 ? (
+            <p className="text-lg font-bold text-slate-300 mt-0.5">—</p>
+          ) : (
+            entries.map(([cur, val]) => (
+              <p key={cur} className={`text-lg font-bold mt-0.5 ${c.text}`}>
+                {formatCurrency(val, cur)}
+              </p>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

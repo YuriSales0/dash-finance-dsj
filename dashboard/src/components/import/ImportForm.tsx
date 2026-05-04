@@ -61,6 +61,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
   const [fxLoading, setFxLoading] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [expectedBalance, setExpectedBalance] = useState("");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [loading, setLoading] = useState<"preview" | "commit" | null>(null);
@@ -286,7 +287,26 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
 
       {/* Upload */}
       <div className="card">
-        <div className="card-header"><h3 className="font-semibold">2. Upload do CSV</h3></div>
+        <div className="card-header"><h3 className="font-semibold">2. Saldo de verificacao (opcional)</h3></div>
+          <div className="card-body">
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Saldo atual real do banco (pra conferir apos import)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              className="input max-w-xs"
+              value={expectedBalance}
+              onChange={(e) => setExpectedBalance(e.target.value)}
+              placeholder="Ex: 14520.30 (olhe no app do banco)"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Se preenchido, apos o import o sistema compara o saldo calculado com o real e avisa se diverge.
+            </p>
+          </div>
+        </div>
+        <div className="card">
+        <div className="card-header"><h3 className="font-semibold">3. Upload do CSV</h3></div>
         <div className="card-body">
           <label className="block">
             <input type="file" accept=".csv,text/csv" onChange={handleFile} className="hidden" />
@@ -330,7 +350,7 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
       {/* Preview */}
       {preview && (
         <div className="card">
-          <div className="card-header"><h3 className="font-semibold">3. Preview</h3></div>
+          <div className="card-header"><h3 className="font-semibold">4. Preview</h3></div>
           <div className="card-body space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <Stat label="Formato" value={preview.format.toUpperCase()} />
@@ -415,8 +435,8 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
                   <strong>{result.needs_review}</strong>
                 </div>
               </div>
-              {(result.balance_delta !== undefined && result.balance_delta !== 0) && (
-                <div className="mt-3 pt-3 border-t border-green-200 text-sm">
+              {(result.balance_delta !== undefined) && (
+                <div className="mt-3 pt-3 border-t border-green-200 text-sm space-y-2">
                   <p className="text-green-900">
                     Saldo ajustado:{" "}
                     <strong className={result.balance_delta >= 0 ? "text-green-700" : "text-red-700"}>
@@ -425,12 +445,35 @@ export function ImportForm({ accounts }: { accounts: BankAccountOption[] }) {
                     </strong>
                     {result.new_balance !== undefined && (
                       <>
-                        {" "}→ novo saldo:{" "}
+                        {" "}→ novo saldo na plataforma:{" "}
                         <strong>{formatCurrency(result.new_balance, currency)}</strong>
                       </>
                     )}
                   </p>
-                  <p className="text-xs text-green-700 mt-1">
+                  {/* Double check: comparar com saldo real informado */}
+                  {expectedBalance && result.new_balance !== undefined && (
+                    (() => {
+                      const expected = Number(expectedBalance);
+                      const diff = Math.abs(result.new_balance - expected);
+                      const matches = diff < 0.5;
+                      return matches ? (
+                        <div className="bg-green-100 text-green-800 rounded p-2 text-xs flex items-center gap-2">
+                          <CheckCircle size={14} />
+                          Saldo bate com o banco: {formatCurrency(expected, currency)}
+                        </div>
+                      ) : (
+                        <div className="bg-red-50 text-red-700 rounded p-2 text-xs flex items-start gap-2">
+                          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-semibold">Saldo NAO bate com o banco!</p>
+                            <p>Plataforma: {formatCurrency(result.new_balance, currency)} · Banco: {formatCurrency(expected, currency)} · Diferenca: {formatCurrency(diff, currency)}</p>
+                            <p className="mt-1">Possivel causa: CSV incompleto, transacoes em outra moeda filtradas, ou saldo de partida incorreto.</p>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
+                  <p className="text-xs text-green-700">
                     Apenas as {result.imported} transacoes novas foram somadas. Duplicatas nao contam.
                   </p>
                 </div>
