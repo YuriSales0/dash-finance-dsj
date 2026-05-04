@@ -22,3 +22,14 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { id } = await request.json();
+    if (!id) return NextResponse.json({ error: "ID obrigatorio" }, { status: 400 });
+    await repository.deleteDebt(id);
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
+  }
+}

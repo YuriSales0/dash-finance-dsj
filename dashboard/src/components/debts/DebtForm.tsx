@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, AlertTriangle } from "lucide-react";
+import { Plus, Loader2, AlertTriangle, Trash2 } from "lucide-react";
+import type { Debt } from "@/types/database";
 
 interface EntityOption {
   id: string;
@@ -26,30 +27,41 @@ const DEBT_CATEGORIES = [
   { value: "outros", label: "Outros" },
 ];
 
-export function DebtForm({ entities }: { entities: EntityOption[] }) {
+interface Props {
+  entities: EntityOption[];
+  editDebt?: Debt | null;       // se passado, vira modo edicao
+  onClose?: () => void;          // callback de fechamento (modo edicao)
+  forceOpen?: boolean;           // forcar form aberto (usado em modo edicao)
+}
+
+export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false }: Props) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const isEdit = !!editDebt;
+  const [open, setOpen] = useState(forceOpen || isEdit);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const defaultEntity = entities[0]?.id || "";
   const defaultCurrency = entities[0]?.currency_default || "USD";
 
   const [form, setForm] = useState({
-    entity_id: defaultEntity,
-    description: "",
-    creditor: "",
-    amount_total: "",
-    currency: defaultCurrency,
-    issue_date: new Date().toISOString().slice(0, 10),
-    due_date: "",
-    interest_rate_pct: "0",
-    fixed_commission: "0",
-    is_recurring: false,
-    recurrence_interval: "monthly" as string,
-    recurrence_end_date: "",
-    category: "",
-    notes: "",
+    entity_id: editDebt?.entity_id || defaultEntity,
+    description: editDebt?.description || "",
+    creditor: editDebt?.creditor || "",
+    amount_total: editDebt ? String(editDebt.amount_total) : "",
+    amount_paid: editDebt ? String(editDebt.amount_paid) : "0",
+    currency: editDebt?.currency || defaultCurrency,
+    issue_date: editDebt?.issue_date || new Date().toISOString().slice(0, 10),
+    due_date: editDebt?.due_date || "",
+    interest_rate_pct: editDebt?.interest_rate_pct != null ? String(editDebt.interest_rate_pct) : "0",
+    fixed_commission: editDebt?.fixed_commission != null ? String(editDebt.fixed_commission) : "0",
+    is_recurring: !!editDebt?.is_recurring,
+    recurrence_interval: (editDebt?.recurrence_interval || "monthly") as string,
+    recurrence_end_date: editDebt?.recurrence_end_date || "",
+    category: editDebt?.category || "",
+    status: editDebt?.status || "pending",
+    notes: editDebt?.notes || "",
   });
 
   const isAporte = form.category === "aporte_investidor";
@@ -64,7 +76,6 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
         const ent = entities.find((e) => e.id === value);
         if (ent) next.currency = ent.currency_default;
       }
-      // Aporte de investidor → default DSJ Commerce
       if (key === "category" && value === "aporte_investidor") {
         const commerce = entities.find((e) => e.name.toLowerCase().includes("commerce"));
         if (commerce) {
@@ -76,26 +87,44 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
     });
   }
 
+  function close() {
+    setOpen(false);
+    setError(null);
+    if (onClose) onClose();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    const payload: any = {
+      entity_id: form.entity_id,
+      description: form.description,
+      creditor: form.creditor || null,
+      amount_total: Number(form.amount_total),
+      currency: form.currency,
+      issue_date: form.issue_date,
+      due_date: form.due_date,
+      interest_rate_pct: Number(form.interest_rate_pct),
+      fixed_commission: Number(form.fixed_commission) || 0,
+      is_recurring: form.is_recurring,
+      recurrence_interval: form.is_recurring ? form.recurrence_interval : null,
+      recurrence_end_date: form.is_recurring && form.recurrence_end_date ? form.recurrence_end_date : null,
+      category: form.category || null,
+      notes: form.notes || null,
+    };
+
+    if (isEdit) {
+      payload.id = editDebt!.id;
+      payload.amount_paid = Number(form.amount_paid) || 0;
+      payload.status = form.status;
+    }
+
     const res = await fetch("/api/debts", {
-      method: "POST",
+      method: isEdit ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        amount_total: Number(form.amount_total),
-        interest_rate_pct: Number(form.interest_rate_pct),
-        fixed_commission: Number(form.fixed_commission) || 0,
-        is_recurring: form.is_recurring,
-        recurrence_interval: form.is_recurring ? form.recurrence_interval : null,
-        recurrence_end_date: form.is_recurring && form.recurrence_end_date ? form.recurrence_end_date : null,
-        creditor: form.creditor || null,
-        category: form.category || null,
-        notes: form.notes || null,
-      }),
+      body: JSON.stringify(payload),
     });
 
     setLoading(false);
@@ -106,9 +135,33 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
       return;
     }
 
-    setOpen(false);
+    if (!isEdit) {
+      setForm((f) => ({ ...f, description: "", creditor: "", amount_total: "", due_date: "", notes: "", category: "" }));
+    }
+    close();
+    router.refresh();
+  }
+
+  async function handleDelete() {
+    if (!editDebt) return;
+    if (!confirm(`Deletar a divida "${editDebt.description}"? Esta acao nao pode ser desfeita.`)) return;
+    setDeleting(true);
     setError(null);
-    setForm((f) => ({ ...f, description: "", creditor: "", amount_total: "", due_date: "", notes: "", category: "" }));
+
+    const res = await fetch("/api/debts", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editDebt.id }),
+    });
+
+    setDeleting(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: "Erro" }));
+      setError(data.error || `Erro ${res.status}`);
+      return;
+    }
+    close();
     router.refresh();
   }
 
@@ -124,8 +177,8 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
   return (
     <div className="card">
       <div className="card-header flex items-center justify-between">
-        <h3 className="font-semibold">Nova divida</h3>
-        <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600 text-sm">Cancelar</button>
+        <h3 className="font-semibold">{isEdit ? "Editar divida" : "Nova divida"}</h3>
+        <button onClick={close} className="text-slate-400 hover:text-slate-600 text-sm">Cancelar</button>
       </div>
       <form onSubmit={handleSubmit} className="card-body grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Empresa">
@@ -159,6 +212,21 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
         <Field label="Valor total">
           <input type="number" step="0.01" className="input" value={form.amount_total} onChange={(e) => update("amount_total", e.target.value)} required />
         </Field>
+        {isEdit && (
+          <>
+            <Field label="Valor ja pago">
+              <input type="number" step="0.01" className="input" value={form.amount_paid} onChange={(e) => update("amount_paid", e.target.value)} />
+            </Field>
+            <Field label="Status">
+              <select className="input" value={form.status} onChange={(e) => update("status", e.target.value as any)}>
+                <option value="pending">Pendente</option>
+                <option value="partial">Parcial</option>
+                <option value="paid">Pago</option>
+                <option value="overdue">Atrasado</option>
+              </select>
+            </Field>
+          </>
+        )}
         <Field label="Juros (% ao periodo)">
           <input type="number" step="0.01" className="input" value={form.interest_rate_pct} onChange={(e) => update("interest_rate_pct", e.target.value)} />
         </Field>
@@ -224,11 +292,22 @@ export function DebtForm({ entities }: { entities: EntityOption[] }) {
           </div>
         )}
 
-        <div className="md:col-span-2">
-          <button type="submit" disabled={loading} className="btn-primary inline-flex items-center gap-2">
+        <div className="md:col-span-2 flex items-center gap-2">
+          <button type="submit" disabled={loading || deleting} className="btn-primary inline-flex items-center gap-2">
             {loading && <Loader2 size={14} className="animate-spin" />}
-            Criar divida
+            {isEdit ? "Salvar alteracoes" : "Criar divida"}
           </button>
+          {isEdit && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={loading || deleting}
+              className="ml-auto inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded transition"
+            >
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Deletar
+            </button>
+          )}
         </div>
       </form>
     </div>

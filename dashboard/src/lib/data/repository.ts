@@ -83,6 +83,7 @@ export interface Repository {
   getDebts(filters?: { entity_id?: EntityId; status?: string }): Promise<Debt[]>;
   createDebt(data: Partial<Debt>): Promise<Debt>;
   updateDebt(id: number, data: Partial<Debt>): Promise<void>;
+  deleteDebt(id: number): Promise<void>;
 
   // Financiamentos
   getFinancings(filters?: { investor_id?: number; receivable_id?: number }): Promise<Financing[]>;
@@ -286,6 +287,10 @@ class MockRepository implements Repository {
   async updateDebt(id: number, data: Partial<Debt>) {
     const d = MOCK_DEBTS.find((x) => x.id === id);
     if (d) Object.assign(d, data);
+  }
+  async deleteDebt(id: number) {
+    const idx = MOCK_DEBTS.findIndex((x) => x.id === id);
+    if (idx >= 0) MOCK_DEBTS.splice(idx, 1);
   }
 
   async getFinancings(filters: { investor_id?: number; receivable_id?: number } = {}) {
@@ -679,6 +684,11 @@ class SupabaseRepository implements Repository {
 
   async updateDebt(id: number, data: Partial<Debt>) {
     const { error } = await this.db.from("debts").update(data).eq("id", id);
+    if (error) throw error;
+  }
+
+  async deleteDebt(id: number) {
+    const { error } = await this.db.from("debts").delete().eq("id", id);
     if (error) throw error;
   }
 
