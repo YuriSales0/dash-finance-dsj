@@ -18,6 +18,13 @@ const MONTH_NAMES = [
   "Jul", "Ago", "Set", "Out", "Nov", "Dez",
 ];
 
+// new Date("2026-01-01") em UTC-3 vira 31/dez/2025 23:00 local → getMonth()=11.
+// Parsear YYYY-MM-DD como local date evita o shift de timezone.
+function parseLocalDate(dateStr: string): { year: number; month: number } {
+  const [y, m] = dateStr.split("-").map(Number);
+  return { year: y, month: m - 1 }; // month 0-indexed
+}
+
 interface PnlOverviewProps {
   pnl: MonthlyPnl[];
   cashflow?: MonthlyCashflow[];
@@ -26,32 +33,28 @@ interface PnlOverviewProps {
 export function PnlOverview({ pnl, cashflow = [] }: PnlOverviewProps) {
   const years = useMemo(() => {
     const set = new Set<number>();
-    for (const p of pnl) {
-      set.add(new Date(p.month).getFullYear());
-    }
-    for (const c of cashflow) {
-      set.add(new Date(c.month).getFullYear());
-    }
+    for (const p of pnl) set.add(parseLocalDate(p.month).year);
+    for (const c of cashflow) set.add(parseLocalDate(c.month).year);
     return Array.from(set).sort((a, b) => b - a);
   }, [pnl, cashflow]);
 
   const [selectedYear, setSelectedYear] = useState(() => years[0] || new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(null); // null = all
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
   const filtered = useMemo(() => {
     return pnl.filter((p) => {
-      const d = new Date(p.month);
-      if (d.getFullYear() !== selectedYear) return false;
-      if (selectedMonth !== null && d.getMonth() !== selectedMonth) return false;
+      const { year, month } = parseLocalDate(p.month);
+      if (year !== selectedYear) return false;
+      if (selectedMonth !== null && month !== selectedMonth) return false;
       return true;
     });
   }, [pnl, selectedYear, selectedMonth]);
 
   const filteredCashflow = useMemo(() => {
     return cashflow.filter((c) => {
-      const d = new Date(c.month);
-      if (d.getFullYear() !== selectedYear) return false;
-      if (selectedMonth !== null && d.getMonth() !== selectedMonth) return false;
+      const { year, month } = parseLocalDate(c.month);
+      if (year !== selectedYear) return false;
+      if (selectedMonth !== null && month !== selectedMonth) return false;
       return true;
     });
   }, [cashflow, selectedYear, selectedMonth]);

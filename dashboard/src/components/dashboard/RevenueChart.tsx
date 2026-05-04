@@ -17,12 +17,17 @@ interface Props {
 }
 
 export function RevenueChart({ data }: Props) {
-  const chartData = data.map((p) => ({
-    month: new Date(p.month).toLocaleDateString("pt-BR", { month: "short" }),
-    Receita: Math.round(p.revenue),
-    Custos: Math.round(p.total_costs),
-    Lucro: Math.round(p.net_profit),
-  }));
+  const chartData = data.map((p) => {
+    // Parsear YYYY-MM-DD sem shift de timezone
+    const [y, m] = p.month.split("-").map(Number);
+    const d = new Date(y, m - 1, 1);
+    return {
+      month: d.toLocaleDateString("pt-BR", { month: "short" }),
+      Receita: Math.round(p.revenue),
+      Custos: Math.round(p.total_costs),
+      Lucro: Math.round(p.net_profit),
+    };
+  });
 
   return (
     <ResponsiveContainer width="100%" height={300}>

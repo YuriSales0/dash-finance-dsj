@@ -91,7 +91,7 @@ export function BookkeepingStatus({
             onClick={syncAll}
             disabled={syncing || generating}
             className="btn-primary text-xs inline-flex items-center gap-1.5"
-            title="Recalcula saldos + regenera P&L + detecta intercompany"
+            title="Regenera P&L + detecta intercompany"
           >
             {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             Sincronizar tudo
