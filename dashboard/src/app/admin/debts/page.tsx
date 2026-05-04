@@ -17,76 +17,15 @@ export default async function DebtsPage() {
   ]);
   const activeEntities = entities.filter((e) => e.id !== "consolidated");
 
-  // Total a pagar por moeda (sem conversao)
+  // Total a pagar por moeda — calculado APOS os buckets pra ser consistente
+  // (a soma dos buckets de prazo)
   const pendingByCurrency: Record<string, number> = {};
-  // Montante a vencer nos proximos 30 dias por moeda
+  // Montante a vencer nos proximos 30 dias por moeda — overdue + curto prazo
   const next30ByCurrency: Record<string, number> = {};
   const today = new Date();
-  const in30Days = new Date(today.getTime() + 30 * 86400000);
 
-  for (const d of debts) {
-    if (d.status !== "pending" && d.status !== "partial") continue;
-    const remaining = d.amount_total - d.amount_paid;
-    if (remaining <= 0) continue;
-    pendingByCurrency[d.currency] = (pendingByCurrency[d.currency] || 0) + remaining;
-
-    // Aportes com juros parcelados: no 30 dias so entra o principal se
-    // o vencimento FINAL cai em 30 dias. Parcelas de juros sao computadas
-    // no loop separado abaixo.
-    const isAporteParcelado = d.category === "aporte_investidor" && !!d.interest_payment_interval;
-
-    const due = new Date(d.due_date);
-    if (due <= in30Days) {
-      if (isAporteParcelado) {
-        // So o balloon (principal + comissao) entra — quando o vencimento final cai em 30 dias
-        const balloon = remaining + (d.fixed_commission || 0);
-        next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + balloon;
-      } else {
-        next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + remaining;
-      }
-    }
-    // Se aporte parcelado com vencimento > 30 dias: nao adiciona nada aqui.
-    // As parcelas de juros sao somadas no loop "Aportes com juros parcelados" abaixo.
-  }
-
-  // Adicionar ocorrencias recorrentes que caem nos proximos 30 dias
-  // (sem contar a primeira ocorrencia ja inclusa em pendingByCurrency)
-  // Aportes de investidor NAO entram aqui — usam interest_payment_interval
-  for (const d of debts) {
-    if (!d.is_recurring || !d.recurrence_interval) continue;
-    if (d.category === "aporte_investidor") continue;
-    if (d.recurrence_end_date && new Date(d.recurrence_end_date) < today) continue;
-    const intervalDays =
-      d.recurrence_interval === "weekly" ? 7 :
-      d.recurrence_interval === "biweekly" ? 14 :
-      d.recurrence_interval === "monthly" ? 30 :
-      d.recurrence_interval === "quarterly" ? 90 :
-      365;
-    const extraOccurrences = Math.floor(30 / intervalDays);
-    if (extraOccurrences > 0) {
-      const perOccurrence = d.amount_total + (d.fixed_commission || 0);
-      next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + perOccurrence * extraOccurrences;
-    }
-  }
-
-  // Aportes com juros parcelados: somar parcelas que caem em 30 dias
-  for (const d of debts) {
-    if (d.category !== "aporte_investidor" || !d.interest_payment_interval) continue;
-    if (d.status === "paid") continue;
-    const intervalDays =
-      d.interest_payment_interval === "weekly" ? 7 :
-      d.interest_payment_interval === "biweekly" ? 14 :
-      d.interest_payment_interval === "monthly" ? 30 :
-      d.interest_payment_interval === "quarterly" ? 90 :
-      365;
-    const installments = Math.floor(30 / intervalDays);
-    if (installments > 0) {
-      const interestPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
-      if (interestPayment > 0) {
-        next30ByCurrency[d.currency] = (next30ByCurrency[d.currency] || 0) + interestPayment * installments;
-      }
-    }
-  }
+  // Os calculos de pendingByCurrency e next30ByCurrency sao feitos APOS o
+  // loop dos buckets (no final desta funcao), pra serem consistentes.
 
   const overdueCount = debts.filter(
     (d) => d.status !== "paid" && new Date(d.due_date) < new Date()
@@ -228,6 +167,26 @@ export default async function DebtsPage() {
       const bucket = bucketFor(daysUntilDue);
       bucket[d.currency] = (bucket[d.currency] || 0) + total;
     }
+  }
+
+  // Popular pendingByCurrency e next30ByCurrency a partir dos buckets
+  // (consistencia: A pagar = soma dos cards de prazo)
+  const allCurrencies = Array.from(new Set<string>([
+    ...Object.keys(shortTerm),
+    ...Object.keys(mediumTerm),
+    ...Object.keys(longTerm),
+    ...Object.keys(overdueByCurrency),
+  ]));
+  for (const cur of allCurrencies) {
+    const total =
+      (overdueByCurrency[cur] || 0) +
+      (shortTerm[cur] || 0) +
+      (mediumTerm[cur] || 0) +
+      (longTerm[cur] || 0);
+    if (total > 0) pendingByCurrency[cur] = total;
+
+    const next30 = (overdueByCurrency[cur] || 0) + (shortTerm[cur] || 0);
+    if (next30 > 0) next30ByCurrency[cur] = next30;
   }
 
   return (
