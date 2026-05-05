@@ -66,7 +66,10 @@ export interface Repository {
     months?: number;
   }): Promise<MonthlyPnl[]>;
   getMonthlyCashflow(months?: number): Promise<MonthlyCashflow[]>;
-  getMonthlyCashflowByCurrency(months?: number): Promise<MonthlyCashflowByCurrency[]>;
+  getMonthlyCashflowByCurrency(
+    months?: number,
+    entityId?: EntityId
+  ): Promise<MonthlyCashflowByCurrency[]>;
   getInvestors(): Promise<Investor[]>;
   getOpportunities(): Promise<Opportunity[]>;
   getInvestments(filters?: { investor_id?: number; opportunity_id?: number }): Promise<Investment[]>;
@@ -209,7 +212,10 @@ class MockRepository implements Repository {
     return [];
   }
 
-  async getMonthlyCashflowByCurrency(_months?: number): Promise<MonthlyCashflowByCurrency[]> {
+  async getMonthlyCashflowByCurrency(
+    _months?: number,
+    _entityId?: EntityId
+  ): Promise<MonthlyCashflowByCurrency[]> {
     return [];
   }
 
@@ -590,8 +596,12 @@ class SupabaseRepository implements Repository {
     return Object.values(buckets).sort((a, b) => a.month.localeCompare(b.month));
   }
 
-  async getMonthlyCashflowByCurrency(months: number = 24): Promise<MonthlyCashflowByCurrency[]> {
+  async getMonthlyCashflowByCurrency(
+    months: number = 24,
+    entityId?: EntityId
+  ): Promise<MonthlyCashflowByCurrency[]> {
     // Mesma logica do getMonthlyCashflow mas agrupando tambem por currency_original
+    // Aceita entityId opcional pra filtrar uma empresa especifica
     const cutoff = new Date();
     cutoff.setMonth(cutoff.getMonth() - months);
     const cutoffStr = cutoff.toISOString();
@@ -606,12 +616,16 @@ class SupabaseRepository implements Repository {
     const pageSize = 1000;
     let page = 0;
     while (true) {
-      const { data, error } = await this.db
+      let q = this.db
         .from("transactions")
         .select("timestamp, amount_original, currency_original, category_id, is_intercompany")
         .gte("timestamp", cutoffStr)
         .order("timestamp", { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
+      if (entityId && entityId !== "consolidated") {
+        q = q.eq("entity_id", entityId);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       const batch = (data || []) as any[];
       all.push(...batch);

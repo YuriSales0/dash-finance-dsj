@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
-import { PnlTable } from "@/components/dashboard/PnlTable";
-import { CostBreakdown } from "@/components/dashboard/CostBreakdown";
+import { PnlOverview } from "@/components/dashboard/PnlOverview";
 import { repository } from "@/lib/data/repository";
-import { entityColors, formatCurrency } from "@/lib/format";
+import { entityColors } from "@/lib/format";
+import type { EntityId } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,29 +14,23 @@ export default async function PnlPage({
 }: {
   searchParams: { entity?: string };
 }) {
-  // Pega empresas do banco dinamicamente
   const entitiesFromDb = await repository.getEntities();
 
-  // Monta lista de seletores: Consolidado + todas as empresas
   const selectorEntities = [
-    { id: "consolidated", name: "Consolidado", currency_default: "USD" },
+    { id: "consolidated" as EntityId, name: "Consolidado" },
     ...entitiesFromDb
       .filter((e) => e.id !== "consolidated")
-      .map((e) => ({ id: e.id, name: e.name, currency_default: e.currency_default || "USD" })),
+      .map((e) => ({ id: e.id as EntityId, name: e.name })),
   ];
 
-  const selectedEntityId = searchParams.entity || "consolidated";
+  const selectedEntityId = (searchParams.entity || "consolidated") as EntityId;
   const selectedEntity =
     selectorEntities.find((e) => e.id === selectedEntityId) || selectorEntities[0];
-  const currency = selectedEntity.currency_default || "USD";
 
-  const pnl = await repository.getMonthlyPnl({
-    entity_id: selectedEntity.id,
-    months: 12,
-  });
-
-  const currentMonth = pnl[pnl.length - 1];
-  const recent = pnl.slice(-6);
+  const [pnl, cashflowByCurrency] = await Promise.all([
+    repository.getMonthlyPnl({ entity_id: selectedEntity.id, months: 24 }),
+    repository.getMonthlyCashflowByCurrency(24, selectedEntity.id),
+  ]);
 
   return (
     <>
@@ -67,75 +61,19 @@ export default async function PnlPage({
           })}
         </div>
 
-        {currentMonth ? (
-          <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="card">
-                <div className="card-header">
-                  <h3 className="font-semibold">Composicao de Custos (mes atual)</h3>
-                </div>
-                <div className="card-body">
-                  <CostBreakdown pnl={currentMonth} currency={currency} />
-                </div>
-              </div>
-              <div className="card">
-                <div className="card-header flex items-center justify-between">
-                  <h3 className="font-semibold">Resumo do Mes Atual</h3>
-                  <span className="text-xs font-semibold bg-slate-100 px-2 py-1 rounded">
-                    {currency}
-                  </span>
-                </div>
-                <div className="card-body space-y-4">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-slate-600">Receita</span>
-                    <span className="text-2xl font-bold text-green-600">
-                      {formatCurrency(currentMonth.revenue, currency)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-slate-600">Custos Totais</span>
-                    <span className="text-2xl font-bold text-red-600">
-                      {formatCurrency(currentMonth.total_costs, currency)}
-                    </span>
-                  </div>
-                  {currentMonth.cost_other > 0 && (
-                    <p className="text-xs text-amber-600 -mt-2">
-                      Inclui {formatCurrency(currentMonth.cost_other, currency)} em "outros" (sem categoria + escritorio)
-                    </p>
-                  )}
-                  <div className="flex justify-between items-baseline border-t border-slate-200 pt-4">
-                    <span className="text-slate-700 font-medium">Lucro Liquido</span>
-                    <span className="text-3xl font-bold text-blue-600">
-                      {formatCurrency(currentMonth.net_profit, currency)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-slate-600">Margem</span>
-                    <span className="text-xl font-semibold">
-                      {currentMonth.margin_pct.toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-header">
-                <h3 className="font-semibold">P&L (ultimos 6 meses)</h3>
-              </div>
-              <div className="card-body">
-                <PnlTable rows={recent} currency={currency} />
-              </div>
-            </div>
-          </>
-        ) : (
+        {cashflowByCurrency.length === 0 && pnl.length === 0 ? (
           <div className="card card-body text-center py-12 text-slate-400">
             <p className="text-sm">Sem dados de P&L para {selectedEntity.name}.</p>
             <p className="text-xs mt-2">
-              Importe transacoes em <Link href="/admin/import" className="text-brand-600 underline">/admin/import</Link>
-              {" "}e gere o P&L automaticamente.
+              Importe transacoes em{" "}
+              <Link href="/admin/import" className="text-brand-600 underline">
+                /admin/import
+              </Link>{" "}
+              e gere o P&L automaticamente.
             </p>
           </div>
+        ) : (
+          <PnlOverview pnl={pnl} cashflowByCurrency={cashflowByCurrency} />
         )}
       </div>
     </>
