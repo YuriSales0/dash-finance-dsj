@@ -12,6 +12,7 @@ function invalidateReceivablePaths() {
   revalidatePath("/admin/investments");
   revalidatePath("/admin/debts");
   revalidatePath("/admin/pnl");
+  revalidatePath("/admin/calendar");
   revalidatePath("/investor");
   revalidatePath("/investor/opportunities");
   revalidatePath("/investor/portfolio");

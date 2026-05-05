@@ -7,6 +7,7 @@ function invalidateDebtPaths() {
   revalidatePath("/admin");
   revalidatePath("/admin/debts");
   revalidatePath("/admin/pnl");
+  revalidatePath("/admin/calendar");
 }
 
 export async function POST(request: Request) {

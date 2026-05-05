@@ -19,10 +19,12 @@ import {
   Settings,
   LogOut,
   Scale,
+  Calendar,
 } from "lucide-react";
 
 const navItems = [
   { href: "/admin", label: "Visao Geral", icon: LayoutDashboard },
+  { href: "/admin/calendar", label: "Calendario", icon: Calendar },
   { href: "/admin/risk", label: "Indice de Risco", icon: Activity },
   { href: "/admin/import", label: "Importar CSV", icon: Upload },
   { href: "/admin/transactions", label: "Transacoes", icon: ArrowLeftRight },
