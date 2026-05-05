@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { InviteGenerator } from "@/components/invite/InviteGenerator";
 import { InvestorHomeView } from "@/components/investor/InvestorHomeView";
+import { InvestorEditModal } from "@/components/investments/InvestorEditModal";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
 import {
-  Users, Link2, Eye, EyeOff, FileText,
+  Users, Link2, Eye, EyeOff, FileText, Edit3,
 } from "lucide-react";
 import type { Receivable } from "@/types/database";
 
@@ -133,6 +134,7 @@ function InvestorsContent({
   const router = useRouter();
   const [actingId, setActingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editingInvestor, setEditingInvestor] = useState<any | null>(null);
   const approved = investors.filter((i) => i.status === "approved");
   const pending = investors.filter((i) => i.status === "pending");
 
@@ -323,22 +325,30 @@ function InvestorsContent({
                 <th className="text-right py-2 px-4 font-medium text-slate-500">Investido</th>
                 <th className="text-right py-2 px-4 font-medium text-slate-500">Retornado</th>
                 <th className="text-right py-2 px-4 font-medium text-slate-500">Lucro</th>
+                <th className="text-center py-2 px-4 font-medium text-slate-500 w-16">Acao</th>
               </tr>
             </thead>
             <tbody>
               {approved.length === 0 && (
-                <tr><td colSpan={5} className="text-center py-8 text-slate-400">Nenhum investidor aprovado</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-slate-400">Nenhum investidor aprovado</td></tr>
               )}
               {approved.map((inv) => {
-                const profit = inv.total_returned - inv.total_invested;
+                const profit = (inv.total_returned || 0) - (inv.total_invested || 0);
                 return (
-                  <tr key={inv.id} className="border-b border-slate-100">
+                  <tr
+                    key={inv.id}
+                    onClick={() => setEditingInvestor(inv)}
+                    className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition"
+                  >
                     <td className="py-3 px-4 font-medium">{inv.name}</td>
                     <td className="py-3 px-4 text-xs text-slate-500">{inv.email}<br />{inv.phone}</td>
-                    <td className="py-3 px-4 text-right font-mono">{formatCurrency(inv.total_invested)}</td>
-                    <td className="py-3 px-4 text-right font-mono">{formatCurrency(inv.total_returned)}</td>
+                    <td className="py-3 px-4 text-right font-mono">{formatCurrency(inv.total_invested || 0)}</td>
+                    <td className="py-3 px-4 text-right font-mono">{formatCurrency(inv.total_returned || 0)}</td>
                     <td className={`py-3 px-4 text-right font-mono font-semibold ${profit > 0 ? "text-green-600" : "text-slate-500"}`}>
                       {profit > 0 ? "+" : ""}{formatCurrency(profit)}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <Edit3 size={14} className="text-slate-400 inline" />
                     </td>
                   </tr>
                 );
@@ -347,6 +357,13 @@ function InvestorsContent({
           </table>
         </div>
       </div>
+
+      {editingInvestor && (
+        <InvestorEditModal
+          investor={editingInvestor}
+          onClose={() => setEditingInvestor(null)}
+        />
+      )}
     </div>
   );
 }
