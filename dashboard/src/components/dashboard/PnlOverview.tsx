@@ -35,9 +35,12 @@ interface PnlOverviewProps {
 
 interface MonthRow {
   month: string;
-  revenue: number;
-  costs: number;
-  profit: number;
+  // P&L = caixa: receita = tudo que entrou, despesa = tudo que saiu
+  receita: number;       // inflow (todas as positivas)
+  despesa: number;       // outflow absoluto (todas as negativas)
+  lucro: number;         // receita - despesa = cash_delta
+  // decomposicao por categoria (pra detalhamento)
+  operacional: number;   // revenue_flow + cost_flow (operacional)
   transfer_flow: number;
   intercompany_flow: number;
   investment_flow: number;
@@ -48,10 +51,11 @@ interface MonthRow {
 interface CurrencyData {
   currency: string;
   totals: {
-    revenue: number;
-    costs: number;
-    profit: number;
+    receita: number;
+    despesa: number;
+    lucro: number;
     margin: number;
+    operacional: number;
     transfer_flow: number;
     intercompany_flow: number;
     investment_flow: number;
@@ -92,6 +96,8 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
   }, [cashflowByCurrency, selectedYear, selectedMonth]);
 
   // Agrupar por moeda + manter linhas mensais
+  // Receita = tudo que entrou (inflow). Despesa = tudo que saiu (outflow).
+  // Lucro = Receita - Despesa = cash_delta (variacao real do saldo).
   const byCurrency = useMemo<CurrencyData[]>(() => {
     const map: Record<string, CurrencyData> = {};
     for (const c of filteredByCurrency) {
@@ -100,10 +106,11 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
         map[cur] = {
           currency: cur,
           totals: {
-            revenue: 0,
-            costs: 0,
-            profit: 0,
+            receita: 0,
+            despesa: 0,
+            lucro: 0,
             margin: 0,
+            operacional: 0,
             transfer_flow: 0,
             intercompany_flow: 0,
             investment_flow: 0,
@@ -114,11 +121,10 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
         };
       }
       const x = map[cur];
-      const revenue = c.revenue_flow;
-      const costs = -c.cost_flow; // cost_flow vem negativo
-      const profit = revenue - costs;
-      x.totals.revenue += revenue;
-      x.totals.costs += costs;
+      const operacional = c.revenue_flow + c.cost_flow; // cost_flow ja negativo
+      x.totals.receita += c.inflow;
+      x.totals.despesa += c.outflow;
+      x.totals.operacional += operacional;
       x.totals.transfer_flow += c.transfer_flow;
       x.totals.intercompany_flow += c.intercompany_flow;
       x.totals.investment_flow += c.investment_flow;
@@ -126,9 +132,10 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
       x.totals.cash_delta += c.cash_delta;
       x.monthly.push({
         month: c.month,
-        revenue,
-        costs,
-        profit,
+        receita: c.inflow,
+        despesa: c.outflow,
+        lucro: c.inflow - c.outflow,
+        operacional,
         transfer_flow: c.transfer_flow,
         intercompany_flow: c.intercompany_flow,
         investment_flow: c.investment_flow,
@@ -137,8 +144,8 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
       });
     }
     for (const x of Object.values(map)) {
-      x.totals.profit = x.totals.revenue - x.totals.costs;
-      x.totals.margin = x.totals.revenue > 0 ? (x.totals.profit / x.totals.revenue) * 100 : 0;
+      x.totals.lucro = x.totals.receita - x.totals.despesa;
+      x.totals.margin = x.totals.receita > 0 ? (x.totals.lucro / x.totals.receita) * 100 : 0;
       x.monthly.sort((a, b) => a.month.localeCompare(b.month));
     }
     return Object.values(map).sort((a, b) => {
@@ -228,10 +235,10 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
 
       {/* Aviso multi-moeda */}
       <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900">
-        <strong>P&amp;L por moeda:</strong> as empresas operam em USD, GBP, EUR e BRL sem
-        conversao cambial automatica. P&amp;L = receita - despesa operacional. Caixa total
-        do periodo = P&amp;L + FX/interbank + intercompany + investidores + sem categoria
-        (deve bater com a variacao real do saldo bancario).
+        <strong>P&amp;L acompanha o saldo:</strong> Receita = tudo que entrou,
+        Despesa = tudo que saiu (incluindo FX/interbank, intercompany e
+        investidores). Lucro = Receita - Despesa = variacao real do saldo no
+        periodo. Cada moeda e mostrada separadamente (sem conversao automatica).
       </div>
 
       {/* P&L por moeda */}
@@ -310,7 +317,7 @@ interface CurrencyBlockProps {
 
 function CurrencyBlock({ data, periodLabel }: CurrencyBlockProps) {
   const { currency, totals } = data;
-  const { revenue, costs, profit, margin, cash_delta } = totals;
+  const { receita, despesa, lucro, margin } = totals;
 
   return (
     <div className="space-y-2">
@@ -321,7 +328,7 @@ function CurrencyBlock({ data, periodLabel }: CurrencyBlockProps) {
         <span className="text-xs text-slate-500">{periodLabel}</span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card card-body">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">Receita</p>
@@ -330,55 +337,43 @@ function CurrencyBlock({ data, periodLabel }: CurrencyBlockProps) {
             </div>
           </div>
           <p className="text-2xl font-bold text-green-600 mt-2">
-            {formatCurrency(revenue, currency)}
+            {formatCurrency(receita, currency)}
           </p>
+          <p className="text-[10px] text-slate-400 mt-1">Tudo que entrou no periodo</p>
         </div>
 
         <div className="card card-body">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">Despesas</p>
+            <p className="text-sm text-slate-500">Despesa</p>
             <div className="p-2 bg-red-50 rounded-lg">
               <TrendingDown size={18} className="text-red-600" />
             </div>
           </div>
           <p className="text-2xl font-bold text-red-600 mt-2">
-            {formatCurrency(costs, currency)}
+            {formatCurrency(despesa, currency)}
           </p>
+          <p className="text-[10px] text-slate-400 mt-1">Tudo que saiu no periodo</p>
         </div>
 
         <div className="card card-body">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">Lucro / Prejuizo</p>
-            <div className={`p-2 rounded-lg ${profit >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-              {profit >= 0 ? (
+            <div className={`p-2 rounded-lg ${lucro >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+              {lucro >= 0 ? (
                 <ArrowUpRight size={18} className="text-green-600" />
               ) : (
                 <ArrowDownRight size={18} className="text-red-600" />
               )}
             </div>
           </div>
-          <p className={`text-2xl font-bold mt-2 ${profit >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {formatCurrency(profit, currency)}
+          <p className={`text-2xl font-bold mt-2 ${lucro >= 0 ? "text-green-600" : "text-red-600"}`}>
+            {formatCurrency(lucro, currency)}
           </p>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-xs text-slate-400">Margem: {formatPercent(margin)}</p>
+            <p className="text-xs text-slate-400">
+              Margem: {formatPercent(margin)} · = variacao do saldo
+            </p>
           </div>
-        </div>
-
-        {/* Caixa total: variacao real do saldo no periodo (P&L + FX + intercompany + investimentos + uncat) */}
-        <div className="card card-body">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">Caixa total</p>
-            <div className={`p-2 rounded-lg ${cash_delta >= 0 ? "bg-green-50" : "bg-red-50"}`}>
-              <Scale size={18} className={cash_delta >= 0 ? "text-green-600" : "text-red-600"} />
-            </div>
-          </div>
-          <p className={`text-2xl font-bold mt-2 ${cash_delta >= 0 ? "text-green-700" : "text-red-700"}`}>
-            {formatCurrency(cash_delta, currency)}
-          </p>
-          <p className="text-[10px] text-slate-400 mt-1">
-            Variacao do saldo no periodo
-          </p>
         </div>
       </div>
 
@@ -393,32 +388,25 @@ interface ReconciliationCardProps {
 }
 
 function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
-  // Decomposicao SEMPRE visivel pra deixar claro que FX/intercompany entram no balanco.
+  // Decomposicao SEMPRE visivel pra deixar claro o que compoe o lucro.
   // Tabela mensal e opcional (toggle).
   const [showMonthly, setShowMonthly] = useState(false);
   const { currency, totals, monthly } = data;
 
-  const pnlNet = totals.revenue - totals.costs;
-  // Caixa total = P&L + todos os movimentos nao-operacionais + uncategorized
-  // (deve igualar cash_delta por construcao)
-  const caixaTotal =
-    pnlNet +
-    totals.transfer_flow +
-    totals.intercompany_flow +
-    totals.investment_flow +
-    totals.uncategorized_flow;
+  // Lucro = totals.lucro = receita - despesa = cash_delta (variacao do saldo)
+  const lucro = totals.lucro;
 
-  // Saude da reconciliacao: SO depende de uncategorized.
-  // FX/intercompany/investidores agora SAO contabilizados — entao se ha pendencia, e classificacao.
+  // Saude do balanco: SO depende de uncategorized (mesmo agora que entra no lucro,
+  // sinaliza pendencia de classificacao).
   const hasUncategorized = Math.abs(totals.uncategorized_flow) > 1;
   const isHealthy = !hasUncategorized;
 
   const components = [
     {
-      label: "P&L operacional (Receita - Despesa)",
-      value: pnlNet,
-      color: pnlNet >= 0 ? "text-green-700" : "text-red-700",
-      hint: "Lucro/prejuizo das operacoes",
+      label: "Operacional (revenue - cost)",
+      value: totals.operacional,
+      color: totals.operacional >= 0 ? "text-green-700" : "text-red-700",
+      hint: "Receitas operacionais menos custos operacionais",
     },
     {
       label: "FX / interbank",
@@ -442,7 +430,7 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
       label: "Sem categoria",
       value: totals.uncategorized_flow,
       color: hasUncategorized ? "text-amber-700" : "text-slate-400",
-      hint: "Transacoes ainda nao classificadas — afeta o balanco",
+      hint: "Transacoes ainda nao classificadas",
     },
   ];
 
@@ -452,7 +440,7 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
         <div className="flex items-center gap-2">
           <Scale size={16} className={isHealthy ? "text-green-600" : "text-amber-600"} />
           <h3 className="font-semibold text-sm">
-            Balanco de caixa ({currency})
+            Composicao do Lucro ({currency})
           </h3>
           {isHealthy ? (
             <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
@@ -467,10 +455,10 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
       </div>
 
       <div className="card-body space-y-4 text-sm">
-          {/* Decomposicao do caixa total — SEMPRE visivel */}
+          {/* Decomposicao do lucro — SEMPRE visivel */}
           <div>
             <p className="text-xs font-semibold text-slate-700 mb-2">
-              Decomposicao do caixa do periodo:
+              Como o Lucro/Prejuizo e formado no periodo:
             </p>
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               {components.map((c, i) => (
@@ -492,16 +480,16 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
               ))}
               <div className="flex items-start gap-3 px-3 py-2 bg-slate-100 border-t-2 border-slate-300">
                 <div className="flex-1">
-                  <p className="text-xs font-bold text-slate-900">= Caixa total do periodo</p>
+                  <p className="text-xs font-bold text-slate-900">= Lucro / Prejuizo do periodo</p>
                   <p className="text-[10px] text-slate-600 mt-0.5">
-                    Variacao real do saldo bancario em {currency}
+                    Receita - Despesa = variacao real do saldo em {currency}
                   </p>
                 </div>
                 <span className={`font-mono text-base font-bold shrink-0 ${
-                  caixaTotal >= 0 ? "text-green-700" : "text-red-700"
+                  lucro >= 0 ? "text-green-700" : "text-red-700"
                 }`}>
-                  {caixaTotal >= 0 ? "+" : ""}
-                  {formatCurrency(caixaTotal, currency)}
+                  {lucro >= 0 ? "+" : ""}
+                  {formatCurrency(lucro, currency)}
                 </span>
               </div>
             </div>
@@ -540,14 +528,14 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
                         <th className="text-left px-2 py-1.5 font-medium text-slate-600">Mes</th>
                         <th className="text-right px-2 py-1.5 font-medium text-slate-600">Receita</th>
                         <th className="text-right px-2 py-1.5 font-medium text-slate-600">Despesa</th>
-                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">P&amp;L</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600 border-l border-slate-200">
+                          Lucro
+                        </th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">Operac.</th>
                         <th className="text-right px-2 py-1.5 font-medium text-slate-600">FX</th>
                         <th className="text-right px-2 py-1.5 font-medium text-slate-600">Inter</th>
                         <th className="text-right px-2 py-1.5 font-medium text-slate-600">Invest</th>
                         <th className="text-right px-2 py-1.5 font-medium text-slate-600">Uncat</th>
-                        <th className="text-right px-2 py-1.5 font-medium text-slate-600 border-l border-slate-200">
-                          Caixa
-                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -558,15 +546,20 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
                           <tr key={m.month} className="border-t border-slate-100">
                             <td className="px-2 py-1.5 font-medium text-slate-700">{label}</td>
                             <td className="px-2 py-1.5 text-right font-mono text-green-700">
-                              {m.revenue > 0 ? formatCurrency(m.revenue, currency) : "—"}
+                              {m.receita > 0 ? formatCurrency(m.receita, currency) : "—"}
                             </td>
                             <td className="px-2 py-1.5 text-right font-mono text-red-600">
-                              {m.costs > 0 ? formatCurrency(m.costs, currency) : "—"}
+                              {m.despesa > 0 ? formatCurrency(m.despesa, currency) : "—"}
                             </td>
-                            <td className={`px-2 py-1.5 text-right font-mono font-semibold ${
-                              m.profit >= 0 ? "text-green-700" : "text-red-700"
+                            <td className={`px-2 py-1.5 text-right font-mono font-bold border-l border-slate-200 ${
+                              m.lucro >= 0 ? "text-green-700" : "text-red-700"
                             }`}>
-                              {formatCurrency(m.profit, currency)}
+                              {formatCurrency(m.lucro, currency)}
+                            </td>
+                            <td className={`px-2 py-1.5 text-right font-mono ${
+                              m.operacional >= 0 ? "text-slate-700" : "text-slate-700"
+                            }`}>
+                              {Math.abs(m.operacional) > 0.5 ? formatCurrency(m.operacional, currency) : "—"}
                             </td>
                             <td className="px-2 py-1.5 text-right font-mono text-slate-600">
                               {Math.abs(m.transfer_flow) > 0.5 ? formatCurrency(m.transfer_flow, currency) : "—"}
@@ -582,11 +575,6 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
                             }`}>
                               {Math.abs(m.uncategorized_flow) > 0.5 ? formatCurrency(m.uncategorized_flow, currency) : "—"}
                             </td>
-                            <td className={`px-2 py-1.5 text-right font-mono font-bold border-l border-slate-200 ${
-                              m.cash_delta >= 0 ? "text-green-700" : "text-red-700"
-                            }`}>
-                              {formatCurrency(m.cash_delta, currency)}
-                            </td>
                           </tr>
                         );
                       })}
@@ -595,15 +583,18 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
                       <tr>
                         <td className="px-2 py-1.5 font-bold text-slate-700">Total {periodLabel}</td>
                         <td className="px-2 py-1.5 text-right font-mono font-bold text-green-700">
-                          {formatCurrency(totals.revenue, currency)}
+                          {formatCurrency(totals.receita, currency)}
                         </td>
                         <td className="px-2 py-1.5 text-right font-mono font-bold text-red-600">
-                          {formatCurrency(totals.costs, currency)}
+                          {formatCurrency(totals.despesa, currency)}
                         </td>
-                        <td className={`px-2 py-1.5 text-right font-mono font-bold ${
-                          pnlNet >= 0 ? "text-green-700" : "text-red-700"
+                        <td className={`px-2 py-1.5 text-right font-mono font-bold border-l border-slate-300 ${
+                          lucro >= 0 ? "text-green-700" : "text-red-700"
                         }`}>
-                          {formatCurrency(pnlNet, currency)}
+                          {formatCurrency(lucro, currency)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono text-slate-700">
+                          {formatCurrency(totals.operacional, currency)}
                         </td>
                         <td className="px-2 py-1.5 text-right font-mono text-slate-700">
                           {formatCurrency(totals.transfer_flow, currency)}
@@ -618,11 +609,6 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
                           hasUncategorized ? "text-amber-700 font-bold" : "text-slate-400"
                         }`}>
                           {formatCurrency(totals.uncategorized_flow, currency)}
-                        </td>
-                        <td className={`px-2 py-1.5 text-right font-mono font-bold border-l border-slate-300 ${
-                          caixaTotal >= 0 ? "text-green-700" : "text-red-700"
-                        }`}>
-                          {formatCurrency(caixaTotal, currency)}
                         </td>
                       </tr>
                     </tfoot>

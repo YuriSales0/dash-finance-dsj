@@ -111,6 +111,8 @@ export interface MonthlyPnl {
 export interface MonthlyCashflow {
   month: string;             // YYYY-MM-01
   cash_delta: number;        // soma de TODAS amount_usd no mes
+  inflow: number;            // soma das transacoes positivas (tudo que entrou)
+  outflow: number;           // soma absoluta das transacoes negativas (tudo que saiu)
   revenue_flow: number;      // categorias revenue_*
   cost_flow: number;         // categorias cost_* (negativo)
   intercompany_flow: number; // is_intercompany = true

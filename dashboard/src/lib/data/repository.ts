@@ -564,6 +564,8 @@ class SupabaseRepository implements Repository {
         buckets[monthKey] = {
           month: monthKey,
           cash_delta: 0,
+          inflow: 0,
+          outflow: 0,
           revenue_flow: 0,
           cost_flow: 0,
           intercompany_flow: 0,
@@ -576,6 +578,8 @@ class SupabaseRepository implements Repository {
       const b = buckets[monthKey];
       const amt = Number(t.amount_usd || 0);
       b.cash_delta += amt;
+      if (amt > 0) b.inflow += amt;
+      else b.outflow += -amt;
       b.count++;
 
       // intercompany: ou pela flag is_intercompany OU pela categoria transfer_intercompany
@@ -648,6 +652,8 @@ class SupabaseRepository implements Repository {
           month: monthKey,
           currency,
           cash_delta: 0,
+          inflow: 0,
+          outflow: 0,
           revenue_flow: 0,
           cost_flow: 0,
           intercompany_flow: 0,
@@ -660,6 +666,8 @@ class SupabaseRepository implements Repository {
       const b = buckets[key];
       const amt = Number(t.amount_original || 0);
       b.cash_delta += amt;
+      if (amt > 0) b.inflow += amt;
+      else b.outflow += -amt;
       b.count++;
 
       // intercompany: ou pela flag is_intercompany OU pela categoria transfer_intercompany
