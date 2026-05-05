@@ -127,6 +127,18 @@ export interface MonthlyCashflowByCurrency extends MonthlyCashflow {
   currency: string;
 }
 
+// Verificacao: P&L bate com saldo da conta?
+// Por moeda: variacao real do saldo (balance_current - opening_balance) vs
+// soma das transacoes (cash_delta). Se diff != 0, ha inconsistencia.
+export interface BalanceVerificationRow {
+  currency: string;
+  opening_total: number;       // Sum opening_balance de contas ativas
+  current_total: number;       // Sum balance_current de contas ativas
+  expected_delta: number;      // current_total - opening_total
+  tx_total_flow: number;       // Sum amount_original de todas transacoes
+  diff: number;                // expected_delta - tx_total_flow (zero = OK)
+}
+
 export interface Investor {
   id: number;
   name: string;

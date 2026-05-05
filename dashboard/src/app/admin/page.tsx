@@ -2,6 +2,7 @@ import { Header } from "@/components/layout/Header";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { BookkeepingStatus } from "@/components/dashboard/BookkeepingStatus";
 import { PnlOverview } from "@/components/dashboard/PnlOverview";
+import { BalanceCheck } from "@/components/dashboard/BalanceCheck";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, entityColors, entityNames } from "@/lib/format";
@@ -12,11 +13,21 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export default async function OverviewPage() {
-  const [accounts, pnl24m, cashflow24m, cashflowByCurrency24m, allPendingTx, receivables, debts] = await Promise.all([
+  const [
+    accounts,
+    pnl24m,
+    cashflow24m,
+    cashflowByCurrency24m,
+    balanceCheck,
+    allPendingTx,
+    receivables,
+    debts,
+  ] = await Promise.all([
     repository.getBankAccounts(),
     repository.getMonthlyPnl({ entity_id: "consolidated", months: 24 }),
     repository.getMonthlyCashflow(24),
     repository.getMonthlyCashflowByCurrency(24),
+    repository.getBalanceVerification(),
     repository.getTransactions({ needs_review: true }),
     repository.getReceivables(),
     repository.getDebts(),
@@ -88,6 +99,9 @@ export default async function OverviewPage() {
 
         {/* P&L: Receita / Despesas / Lucro + Reconciliacao — filtro por ano + mes */}
         <PnlOverview pnl={pnl24m} cashflow={cashflow24m} cashflowByCurrency={cashflowByCurrency24m} />
+
+        {/* Verificacao: Lucro acumulado bate com variacao real do saldo? */}
+        <BalanceCheck rows={balanceCheck} />
 
         {/* Caixa Total por moeda (saldo + recebiveis + dividas) */}
         <div className="card card-body bg-gradient-to-r from-slate-50 to-white">

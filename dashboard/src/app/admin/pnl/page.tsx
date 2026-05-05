@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { PnlOverview } from "@/components/dashboard/PnlOverview";
+import { BalanceCheck } from "@/components/dashboard/BalanceCheck";
 import { repository } from "@/lib/data/repository";
 import { entityColors } from "@/lib/format";
 import type { EntityId } from "@/types/database";
@@ -27,9 +28,10 @@ export default async function PnlPage({
   const selectedEntity =
     selectorEntities.find((e) => e.id === selectedEntityId) || selectorEntities[0];
 
-  const [pnl, cashflowByCurrency] = await Promise.all([
+  const [pnl, cashflowByCurrency, balanceCheck] = await Promise.all([
     repository.getMonthlyPnl({ entity_id: selectedEntity.id, months: 24 }),
     repository.getMonthlyCashflowByCurrency(24, selectedEntity.id),
+    repository.getBalanceVerification(selectedEntity.id),
   ]);
 
   return (
@@ -73,7 +75,10 @@ export default async function PnlPage({
             </p>
           </div>
         ) : (
-          <PnlOverview pnl={pnl} cashflowByCurrency={cashflowByCurrency} />
+          <>
+            <PnlOverview pnl={pnl} cashflowByCurrency={cashflowByCurrency} />
+            <BalanceCheck rows={balanceCheck} />
+          </>
         )}
       </div>
     </>

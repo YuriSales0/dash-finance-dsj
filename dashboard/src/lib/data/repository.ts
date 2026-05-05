@@ -5,6 +5,7 @@ import type {
   MonthlyPnl,
   MonthlyCashflow,
   MonthlyCashflowByCurrency,
+  BalanceVerificationRow,
   Investor,
   Opportunity,
   Investment,
@@ -70,6 +71,7 @@ export interface Repository {
     months?: number,
     entityId?: EntityId
   ): Promise<MonthlyCashflowByCurrency[]>;
+  getBalanceVerification(entityId?: EntityId): Promise<BalanceVerificationRow[]>;
   getInvestors(): Promise<Investor[]>;
   getOpportunities(): Promise<Opportunity[]>;
   getInvestments(filters?: { investor_id?: number; opportunity_id?: number }): Promise<Investment[]>;
@@ -216,6 +218,10 @@ class MockRepository implements Repository {
     _months?: number,
     _entityId?: EntityId
   ): Promise<MonthlyCashflowByCurrency[]> {
+    return [];
+  }
+
+  async getBalanceVerification(_entityId?: EntityId): Promise<BalanceVerificationRow[]> {
     return [];
   }
 
@@ -690,6 +696,81 @@ class SupabaseRepository implements Repository {
     return Object.values(buckets).sort((a, b) =>
       a.month.localeCompare(b.month) || a.currency.localeCompare(b.currency)
     );
+  }
+
+  async getBalanceVerification(entityId?: EntityId): Promise<BalanceVerificationRow[]> {
+    // Verifica se P&L bate com variacao real do saldo:
+    //   expected_delta (das contas) = balance_current - opening_balance
+    //   tx_total_flow (das transacoes) = soma de amount_original
+    // Se diff = 0, sistema esta consistente. Se != 0, ha pendencia
+    // (manual edit em balance_current, transacao faltando, ou opening errado).
+    let accQuery = this.db
+      .from("bank_accounts")
+      .select("currency, opening_balance, balance_current, entity_id")
+      .eq("active", true);
+    if (entityId && entityId !== "consolidated") {
+      accQuery = accQuery.eq("entity_id", entityId);
+    }
+    const { data: accs, error: accErr } = await accQuery;
+    if (accErr) throw accErr;
+
+    const byCurrency: Record<string, BalanceVerificationRow> = {};
+    for (const a of (accs || []) as any[]) {
+      const cur = a.currency || "UNKNOWN";
+      if (!byCurrency[cur]) {
+        byCurrency[cur] = {
+          currency: cur,
+          opening_total: 0,
+          current_total: 0,
+          expected_delta: 0,
+          tx_total_flow: 0,
+          diff: 0,
+        };
+      }
+      byCurrency[cur].opening_total += Number(a.opening_balance || 0);
+      byCurrency[cur].current_total += Number(a.balance_current || 0);
+    }
+
+    // Soma de todas transacoes por moeda (paginado)
+    // Filtra por entity_id se especificado, caso contrario soma tudo
+    const pageSize = 1000;
+    let page = 0;
+    while (true) {
+      let q = this.db
+        .from("transactions")
+        .select("currency_original, amount_original")
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+      if (entityId && entityId !== "consolidated") {
+        q = q.eq("entity_id", entityId);
+      }
+      const { data, error } = await q;
+      if (error) throw error;
+      const batch = (data || []) as any[];
+      for (const t of batch) {
+        const cur = t.currency_original || "UNKNOWN";
+        if (!byCurrency[cur]) {
+          // moeda existe em transacoes mas nao em contas — entra zerada
+          byCurrency[cur] = {
+            currency: cur,
+            opening_total: 0,
+            current_total: 0,
+            expected_delta: 0,
+            tx_total_flow: 0,
+            diff: 0,
+          };
+        }
+        byCurrency[cur].tx_total_flow += Number(t.amount_original || 0);
+      }
+      if (batch.length < pageSize) break;
+      page++;
+      if (page > 200) break; // hard cap 200k transacoes
+    }
+
+    for (const r of Object.values(byCurrency)) {
+      r.expected_delta = r.current_total - r.opening_total;
+      r.diff = r.expected_delta - r.tx_total_flow;
+    }
+    return Object.values(byCurrency).sort((a, b) => a.currency.localeCompare(b.currency));
   }
 
   async getInvestors(): Promise<Investor[]> {
