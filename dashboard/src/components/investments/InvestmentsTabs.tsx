@@ -4,10 +4,10 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { InviteGenerator } from "@/components/invite/InviteGenerator";
-import { InvestorRevenueChart } from "@/components/dashboard/InvestorRevenueChart";
+import { InvestorHomeView } from "@/components/investor/InvestorHomeView";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
 import {
-  Users, Link2, Eye, EyeOff, TrendingUp, Calendar, CheckCircle, Award, FileText,
+  Users, Link2, Eye, EyeOff, FileText,
 } from "lucide-react";
 import type { Receivable } from "@/types/database";
 
@@ -351,7 +351,6 @@ function InvestorsContent({
 function PreviewContent({
   metrics,
   pnl12m,
-  opportunities,
   receivables,
 }: {
   metrics: any;
@@ -359,103 +358,32 @@ function PreviewContent({
   opportunities: any[];
   receivables: Receivable[];
 }) {
-  const openOpportunities = opportunities.filter((o) => o.status === "open" || o.status === "active");
   const openReceivables = receivables.filter(
     (r) => r.open_for_financing && r.status !== "paid"
   );
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       <div className="card card-body bg-blue-50 border-blue-200">
         <div className="flex items-start gap-3">
           <Eye className="text-blue-600 mt-0.5" size={20} />
           <div className="flex-1">
             <p className="font-semibold text-blue-900">Preview da vitrine do investidor</p>
             <p className="text-sm text-blue-700 mt-0.5">
-              Visualizacao do que o investidor ve. Dados sensiveis (saldos, transacoes, P&L por empresa) ficam ocultos.
+              Exatamente o que o investidor aprovado ve em /investor. Dados sensiveis
+              (saldos, transacoes, P&amp;L por empresa, contraparte) ficam ocultos.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="bg-gradient-to-br from-slate-900 to-slate-700 text-white px-8 py-10">
-          <h1 className="text-3xl font-bold mb-2">Portfolio DSJ</h1>
-          <p className="text-slate-300">Plataforma privada de antecipacao de recebiveis</p>
-        </div>
-
-        <div className="p-8">
-          <h2 className="text-lg font-semibold mb-4">Numeros da operacao</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <MetricCard icon={<TrendingUp size={18} />} label="Receita mensal" value={formatCurrency(metrics?.total_revenue_usd || 0)} sub={`${metrics?.margin_pct?.toFixed(0)}% margem`} color="green" />
-            <MetricCard icon={<Calendar size={18} />} label="Meses operando" value={String(metrics?.months_operating || 0)} sub="com receita" color="blue" />
-            <MetricCard icon={<CheckCircle size={18} />} label="Concluidas" value={String(metrics?.opportunities_completed || 0)} sub={`${metrics?.opportunities_avg_return?.toFixed(0)}% retorno`} color="purple" />
-            <MetricCard icon={<Award size={18} />} label="Capital retornado" value={formatCurrency(metrics?.total_capital_returned || 0)} sub={`${metrics?.opportunities_loss_count} perdas`} color="amber" />
-          </div>
-
-          <div className="mb-8">
-            <h3 className="font-semibold mb-3">Receita mensal (12 meses)</h3>
-            <div className="bg-slate-50 rounded-lg p-4">
-              <InvestorRevenueChart data={pnl12m} />
-            </div>
-          </div>
-
-          <h3 className="font-semibold mb-3">
-            Recebiveis abertos para financiamento ({openReceivables.length})
-          </h3>
-          {openReceivables.length === 0 ? (
-            <p className="text-sm text-slate-500">Nenhum recebivel aberto no momento.</p>
-          ) : (
-            <div className="space-y-2">
-              {openReceivables.map((r) => {
-                const raised = r.financing_raised || 0;
-                const pct = r.amount_total > 0 ? (raised / r.amount_total) * 100 : 0;
-                const days = Math.round(
-                  (new Date(r.due_date).getTime() - new Date().getTime()) / 86400000
-                );
-                return (
-                  <div key={r.id} className="border border-slate-200 rounded-lg p-3 bg-white">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        {/* Mesma sanitizacao de /investor/opportunities — investidor
-                            NAO ve description/counterparty (info sensivel) */}
-                        <p className="font-medium text-sm">
-                          Operacao #{r.id} ({r.currency})
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {entityNames[r.entity_id] || r.entity_id}
-                        </p>
-                      </div>
-                      <Badge variant="info">Aberto</Badge>
-                    </div>
-                    {r.financing_terms && (
-                      <p className="text-xs text-slate-600 italic mb-2">{r.financing_terms}</p>
-                    )}
-                    <div className="grid grid-cols-3 gap-3 text-xs">
-                      <div>
-                        <p className="text-slate-500">Taxa</p>
-                        <p className="font-semibold">
-                          {r.financing_interest_rate_pct || 0}% / periodo
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Prazo</p>
-                        <p className="font-semibold">
-                          {r.financing_redemption_days || 0} dias ({days}d ate venc.)
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Captado</p>
-                        <p className="font-semibold">{pct.toFixed(0)}%</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {/* opportunities legacy: omitido do preview pra nao confundir o admin */}
-        </div>
+      <div className="border border-slate-200 rounded-xl p-6 bg-white">
+        <InvestorHomeView
+          metrics={metrics}
+          pnl12m={pnl12m}
+          openReceivables={openReceivables}
+          isPreview
+        />
       </div>
 
       <div className="card card-body bg-slate-100 border-slate-200">
@@ -469,7 +397,8 @@ function PreviewContent({
               <li>Salarios e fornecedores</li>
               <li>Transferencias intercompany</li>
               <li>Runway / burn rate</li>
-              <li>P&L por empresa</li>
+              <li>P&amp;L por empresa</li>
+              <li>Description / counterparty dos recebiveis</li>
             </ul>
           </div>
         </div>
