@@ -59,9 +59,9 @@ export default async function DebtsPage() {
     }
   }
 
-  // Aportes com juros parcelados: parcelas em 90 dias
+  // Aportes/emprestimos com pagamento parcelado: parcelas em 90 dias
   for (const d of debts) {
-    if (d.category !== "aporte_investidor" || !d.interest_payment_interval) continue;
+    if (!d.interest_payment_interval) continue;
     if (d.status === "paid") continue;
     const intervalDays =
       d.interest_payment_interval === "weekly" ? 7 :
@@ -69,12 +69,35 @@ export default async function DebtsPage() {
       d.interest_payment_interval === "monthly" ? 30 :
       d.interest_payment_interval === "quarterly" ? 90 :
       365;
-    const installments = Math.floor(projectionDays / intervalDays);
-    if (installments > 0) {
-      const interestPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
-      if (interestPayment > 0) {
-        projectionByCurrency[d.currency] =
-          (projectionByCurrency[d.currency] || 0) + interestPayment * installments;
+    if (d.category === "aporte_investidor") {
+      const installments = Math.floor(projectionDays / intervalDays);
+      if (installments > 0) {
+        const interestPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
+        if (interestPayment > 0) {
+          projectionByCurrency[d.currency] =
+            (projectionByCurrency[d.currency] || 0) + interestPayment * installments;
+        }
+      }
+    } else if (d.category === "emprestimo") {
+      // Parcela = amount_total / N (entre issue_date e due_date)
+      const issueDate = new Date(d.issue_date);
+      const dueDate = new Date(d.due_date);
+      const periodDays = Math.max(0, (dueDate.getTime() - issueDate.getTime()) / 86400000);
+      const installmentsTotal = Math.floor(periodDays / intervalDays);
+      if (installmentsTotal > 0) {
+        const perInstallment = (d.amount_total - d.amount_paid) / installmentsTotal;
+        // Quantas parcelas caem nos proximos 90 dias
+        const today = new Date();
+        let occurrencesIn90 = 0;
+        for (let i = 1; i <= installmentsTotal; i++) {
+          const paymentDate = new Date(issueDate.getTime() + i * intervalDays * 86400000);
+          const days = (paymentDate.getTime() - today.getTime()) / 86400000;
+          if (days >= 0 && days <= projectionDays) occurrencesIn90++;
+        }
+        if (occurrencesIn90 > 0 && perInstallment > 0) {
+          projectionByCurrency[d.currency] =
+            (projectionByCurrency[d.currency] || 0) + perInstallment * occurrencesIn90;
+        }
       }
     }
   }
@@ -115,10 +138,13 @@ export default async function DebtsPage() {
     const remaining = d.amount_total - d.amount_paid;
     if (remaining <= 0) continue;
 
+    const issueDate = new Date(d.issue_date);
     const dueDate = new Date(d.due_date);
     const daysUntilDue = (dueDate.getTime() - today.getTime()) / 86400000;
     const isAporte = d.category === "aporte_investidor";
+    const isEmprestimo = d.category === "emprestimo";
     const isAporteParcelado = isAporte && !!d.interest_payment_interval;
+    const isEmprestimoParcelado = isEmprestimo && !!d.interest_payment_interval;
     const commission = d.fixed_commission || 0;
 
     if (isAporteParcelado) {
@@ -139,6 +165,32 @@ export default async function DebtsPage() {
       const balloon = remaining + commission;
       const bucket = bucketFor(daysUntilDue);
       bucket[d.currency] = (bucket[d.currency] || 0) + balloon;
+    } else if (isEmprestimoParcelado) {
+      // Emprestimo parcelado: amount_total dividido em N parcelas iguais
+      // entre issue_date e due_date, com a frequencia escolhida.
+      const intDays = intervalDaysFor(d.interest_payment_interval);
+      if (intDays > 0) {
+        const periodDays = Math.max(0, (dueDate.getTime() - issueDate.getTime()) / 86400000);
+        const installmentsTotal = Math.floor(periodDays / intDays);
+        if (installmentsTotal > 0) {
+          const perInstallment = remaining / installmentsTotal;
+          // Cada parcela ocorre em issue_date + i*intDays, do indice 1 ate installmentsTotal
+          // (a primeira parcela e em issue+intDays, a ultima em due_date).
+          for (let i = 1; i <= installmentsTotal; i++) {
+            const paymentDate = new Date(issueDate.getTime() + i * intDays * 86400000);
+            const daysFromToday = (paymentDate.getTime() - today.getTime()) / 86400000;
+            const bucket = bucketFor(daysFromToday);
+            bucket[d.currency] = (bucket[d.currency] || 0) + perInstallment;
+          }
+        } else {
+          // Periodo curto demais pra parcelar — trata como pontual
+          const bucket = bucketFor(daysUntilDue);
+          bucket[d.currency] = (bucket[d.currency] || 0) + remaining;
+        }
+      } else {
+        const bucket = bucketFor(daysUntilDue);
+        bucket[d.currency] = (bucket[d.currency] || 0) + remaining;
+      }
     } else if (d.is_recurring && d.recurrence_interval) {
       // Recorrencia normal (salario, assinatura): cada ocorrencia entra no bucket pelo dia
       const intDays = intervalDaysFor(d.recurrence_interval);

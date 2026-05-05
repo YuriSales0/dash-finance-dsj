@@ -60,7 +60,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
     is_recurring: !!editDebt?.is_recurring,
     recurrence_interval: (editDebt?.recurrence_interval || "monthly") as string,
     recurrence_end_date: editDebt?.recurrence_end_date || "",
-    pays_interest_in_installments: !!editDebt?.interest_payment_interval,
+    pays_in_installments: !!editDebt?.interest_payment_interval,
     interest_payment_interval: (editDebt?.interest_payment_interval || "monthly") as string,
     category: editDebt?.category || "",
     status: editDebt?.status || "pending",
@@ -68,6 +68,8 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
   });
 
   const isAporte = form.category === "aporte_investidor";
+  const isEmprestimo = form.category === "emprestimo";
+  const supportsInstallments = isAporte || isEmprestimo;
   const showCommission = isAporte || form.is_recurring;
   const principal = Number(form.amount_total) || 0;
   const ratePct = Number(form.interest_rate_pct) || 0;
@@ -80,13 +82,10 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
   const recurringTotal = form.is_recurring && principal > 0
     ? principal + commission
     : null;
-  // Plano de pagamento de juros parcelado (interest-only com balloon)
-  const installmentInterest = isAporte && form.pays_interest_in_installments && principal > 0
-    ? principal * ratePct / 100
-    : 0;
   // Numero de parcelas entre issue_date e due_date
   function calcInstallmentCount(): number {
-    if (!installmentInterest || !form.issue_date || !form.due_date) return 0;
+    if (!supportsInstallments || !form.pays_in_installments) return 0;
+    if (!form.issue_date || !form.due_date) return 0;
     const start = new Date(form.issue_date);
     const end = new Date(form.due_date);
     if (end <= start) return 0;
@@ -100,6 +99,14 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
     return Math.floor(days / intervalDays);
   }
   const installmentCount = calcInstallmentCount();
+  // Aporte: juros parcelado (interest-only) + balloon principal no fim
+  const installmentInterest = isAporte && form.pays_in_installments && principal > 0
+    ? principal * ratePct / 100
+    : 0;
+  // Emprestimo: parcelas iguais = amount_total / N
+  const installmentEqualPayment = isEmprestimo && form.pays_in_installments && principal > 0 && installmentCount > 0
+    ? principal / installmentCount
+    : 0;
   const intervalLabel =
     form.interest_payment_interval === "weekly" ? "semana" :
     form.interest_payment_interval === "biweekly" ? "quinzena" :
@@ -149,7 +156,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
       is_recurring: form.is_recurring,
       recurrence_interval: form.is_recurring ? form.recurrence_interval : null,
       recurrence_end_date: form.is_recurring && form.recurrence_end_date ? form.recurrence_end_date : null,
-      interest_payment_interval: isAporte && form.pays_interest_in_installments ? form.interest_payment_interval : null,
+      interest_payment_interval: supportsInstallments && form.pays_in_installments ? form.interest_payment_interval : null,
       category: form.category || null,
       notes: form.notes || null,
     };
@@ -279,20 +286,22 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
             <input type="number" step="0.0001" className="input" value={form.iof_pct} onChange={(e) => update("iof_pct", e.target.value)} placeholder="Ex: 0.38" />
           </Field>
         )}
-        {isAporte && (
+        {supportsInstallments && (
           <div className="md:col-span-2 flex items-center gap-3 py-1">
             <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input
                 type="checkbox"
-                checked={form.pays_interest_in_installments}
-                onChange={(e) => update("pays_interest_in_installments", e.target.checked as any)}
+                checked={form.pays_in_installments}
+                onChange={(e) => update("pays_in_installments", e.target.checked as any)}
                 className="rounded"
               />
-              Pagar juros em parcelas mensais ate o vencimento (principal + comissao no fim)
+              {isAporte
+                ? "Pagar juros em parcelas mensais ate o vencimento (principal + comissao no fim)"
+                : "Pagar em parcelas iguais entre emissao e vencimento"}
             </label>
           </div>
         )}
-        {isAporte && form.pays_interest_in_installments && (
+        {supportsInstallments && form.pays_in_installments && (
           <Field label="Frequencia das parcelas">
             <select className="input" value={form.interest_payment_interval} onChange={(e) => update("interest_payment_interval", e.target.value)}>
               <option value="weekly">Semanal</option>
@@ -315,7 +324,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
               {Number(form.fixed_commission) > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.fixed_commission))} comissao</>}
               {iofAmount > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(iofAmount)} IOF ({form.iof_pct}%)</>}
             </p>
-            {form.pays_interest_in_installments && installmentInterest > 0 && installmentCount > 0 && (
+            {form.pays_in_installments && installmentInterest > 0 && installmentCount > 0 && (
               <div className="border-t border-blue-200 pt-2 text-xs text-blue-800 space-y-1">
                 <p className="font-semibold">Plano de pagamento:</p>
                 <p>
@@ -332,6 +341,28 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
                 </p>
               </div>
             )}
+          </div>
+        )}
+        {isEmprestimo && form.pays_in_installments && installmentEqualPayment > 0 && installmentCount > 0 && (
+          <div className="md:col-span-2 bg-green-50 border border-green-200 rounded p-3 text-sm space-y-2">
+            <p className="text-green-900">
+              <strong>Plano de parcelamento:</strong>{" "}
+              {installmentCount} parcela(s) iguais de{" "}
+              <strong>
+                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(installmentEqualPayment)}
+              </strong>{" "}
+              por {intervalLabel}
+            </p>
+            <p className="text-xs text-green-700">
+              Total: {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(principal)}{" "}
+              · primeira parcela apos {form.interest_payment_interval === "weekly" ? "1 semana" : form.interest_payment_interval === "biweekly" ? "2 semanas" : form.interest_payment_interval === "monthly" ? "1 mes" : form.interest_payment_interval === "quarterly" ? "1 trimestre" : "1 ano"} da emissao
+            </p>
+          </div>
+        )}
+        {isEmprestimo && form.pays_in_installments && installmentCount === 0 && form.issue_date && form.due_date && (
+          <div className="md:col-span-2 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
+            Verifique as datas: o periodo entre emissao ({form.issue_date}) e vencimento ({form.due_date}) e
+            insuficiente pra a frequencia escolhida.
           </div>
         )}
         {!isAporte && form.is_recurring && recurringTotal !== null && recurringTotal > 0 && (
