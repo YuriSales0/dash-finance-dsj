@@ -4,6 +4,10 @@ import { BookkeepingStatus } from "@/components/dashboard/BookkeepingStatus";
 import { PnlOverview } from "@/components/dashboard/PnlOverview";
 import { BalanceCheck } from "@/components/dashboard/BalanceCheck";
 import { CaixaTotalCard } from "@/components/dashboard/CaixaTotalCard";
+import {
+  CashflowProjectionCard,
+  type ReceivableEntry,
+} from "@/components/dashboard/CashflowProjectionCard";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, entityColors, entityNames } from "@/lib/format";
@@ -62,6 +66,69 @@ export default async function OverviewPage() {
     const b = bucketName(o.days_from_today);
     return b === "overdue" || b === "short";
   });
+  const mediumDebtOccurrences = allDebtOccurrences.filter(
+    (o) => bucketName(o.days_from_today) === "medium"
+  );
+
+  // Bucketizar recebiveis (pra projecao de entradas)
+  const allReceivableEntries: ReceivableEntry[] = receivables
+    .filter((r) => r.status !== "paid" && r.currency)
+    .map((r) => {
+      const remaining = r.amount_total - r.amount_received;
+      const days = (new Date(r.due_date).getTime() - today.getTime()) / 86400000;
+      return {
+        receivable_id: r.id,
+        description: r.description,
+        counterparty: r.counterparty,
+        entity_id: r.entity_id,
+        amount: remaining,
+        currency: r.currency,
+        due_date: r.due_date,
+        days_from_today: days,
+      };
+    })
+    .filter((e) => e.amount > 0);
+
+  // Curto prazo: atrasados + curto (<=35d). Medio: 36-150d.
+  const shortReceivables = allReceivableEntries.filter((e) => {
+    const b = bucketName(e.days_from_today);
+    return b === "overdue" || b === "short";
+  });
+  const mediumReceivables = allReceivableEntries.filter(
+    (e) => bucketName(e.days_from_today) === "medium"
+  );
+
+  // Agrupar por moeda pra montar BucketCurrencyData
+  function groupByCurrency(rs: ReceivableEntry[], occs: DebtOccurrence[]) {
+    const all = new Set<string>();
+    rs.forEach((r) => all.add(r.currency));
+    occs.forEach((o) => all.add(o.currency));
+    return Array.from(all).map((cur) => {
+      const recvs = rs.filter((r) => r.currency === cur);
+      const ds = occs.filter((o) => o.currency === cur);
+      const entradas = recvs.reduce((s, r) => s + r.amount, 0);
+      const saidas = ds.reduce((s, o) => s + o.amount, 0);
+      return {
+        currency: cur,
+        entradas,
+        saidas,
+        liquido: entradas - saidas,
+        receivables: recvs,
+        debtOccurrences: ds,
+      };
+    });
+  }
+
+  const projectionShort = {
+    label: "Curto prazo",
+    sublabel: "atrasadas + ≤ 35 dias",
+    byCurrency: groupByCurrency(shortReceivables, immediateOccurrences),
+  };
+  const projectionMedium = {
+    label: "Medio prazo",
+    sublabel: "36 a 150 dias",
+    byCurrency: groupByCurrency(mediumReceivables, mediumDebtOccurrences),
+  };
 
   // Ultima atualizacao
   const lastSyncedAccount = accounts
@@ -98,6 +165,9 @@ export default async function OverviewPage() {
           debts={debts}
           immediateOccurrences={immediateOccurrences}
         />
+
+        {/* Projecao de fluxo de caixa por prazo (curto + medio), por moeda */}
+        <CashflowProjectionCard curto={projectionShort} medio={projectionMedium} />
 
         {/* Alertas */}
         {pendingReviewCount > 0 && (
