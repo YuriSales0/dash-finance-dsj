@@ -62,8 +62,9 @@ export default function RegisterPage() {
         return;
       }
 
-      // Redirecionar para contrato (se tiver produto) ou portfolio
-      router.push(`/invest/${code}/contract`);
+      // Redirecionar para landing — investidor fica em status=pending ate
+      // admin aprovar. A landing mostra mensagem "aguardando aprovacao".
+      router.push(`/invest/${code}?registered=1`);
     } catch (err) {
       setError("Erro inesperado. Tente novamente.");
       setLoading(false);

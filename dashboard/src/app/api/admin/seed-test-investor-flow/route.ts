@@ -121,11 +121,13 @@ export async function POST(request: Request) {
     register_url: `/invest/${code}/register`,
     contract_url: `/invest/${code}/contract`,
     next_steps: [
-      "1) Abra invite_url numa janela privada ou outro navegador (pra simular novo investidor)",
-      "2) Clique 'Quero investir' → preencha o registro (nome, CPF, email, senha, banco)",
-      "3) Volte aqui em /admin/investments e aprove o investidor pendente",
-      "4) Logado como investidor, va em contract_url, valide os dados, marque a declaracao e assine",
-      "5) Apos assinar, verifique o hash via GET /api/financings/{id}/verify",
+      "1) Abra invite_url numa janela privada (pra simular novo investidor sem cookies)",
+      "2) Clique 'Quero investir' → preencha o registro (nome, CPF, email, senha, banco/PIX)",
+      "3) Apos registrar, voce volta pra landing com 'Aguardando aprovacao' (status=pending)",
+      "4) Volte aqui em /admin/investments aba 'Investidores e oportunidades' e aprove o investidor pendente",
+      "5) Logado como investidor, retorne a invite_url — vai aparecer 'Cadastro aprovado' com botao 'Assinar contrato'",
+      "6) Assine: confira dados, marque declaracao e clique 'Assinar contrato'",
+      "7) Em /investor/portfolio, clique 'Verificar autenticidade do contrato' pra conferir o hash SHA-256",
     ],
   });
 }

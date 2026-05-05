@@ -5,6 +5,7 @@ import { Wallet, TrendingUp, Clock, Calendar, FileText, Download } from "lucide-
 import { getSession } from "@/lib/supabase/session";
 import { createServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { ContractVerifyButton } from "@/components/investor/ContractVerifyButton";
 
 export const dynamic = "force-dynamic";
 
@@ -182,10 +183,22 @@ export default async function PortfolioPage() {
 
               {/* Contrato */}
               {f.contract_hash && (
-                <div className="text-xs text-slate-400 flex items-center gap-1">
-                  <FileText size={10} />
-                  Contrato #{f.contract_hash?.slice(0, 12)}...
-                  {f.contract_accepted_at && ` — assinado em ${formatDate(f.contract_accepted_at)}`}
+                <div className="border-t border-slate-100 pt-3 flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                    <FileText size={12} />
+                    <span>
+                      Hash <code className="bg-slate-50 px-1 rounded text-[10px]">
+                        {f.contract_hash?.slice(0, 16)}...
+                      </code>
+                      {f.contract_accepted_at &&
+                        ` · assinado em ${formatDate(f.contract_accepted_at)}`}
+                    </span>
+                  </div>
+                  <ContractVerifyButton
+                    financingId={f.id}
+                    contractHash={f.contract_hash}
+                    signedAt={f.contract_signed_at}
+                  />
                 </div>
               )}
             </div>

@@ -56,6 +56,8 @@ export async function POST(request: Request) {
     });
 
     // Criar registro em investors
+    // status="pending" — admin precisa aprovar via /admin/investments antes
+    // do investidor poder assinar contratos. KYC manual.
     const { data: investor, error: invInsErr } = await sb
       .from("investors")
       .insert({
@@ -69,9 +71,7 @@ export async function POST(request: Request) {
         pix_key: pix_key || null,
         invite_code,
         auth_user_id: userId,
-        status: "approved",
-        approved_by: "auto",
-        approved_at: new Date().toISOString(),
+        status: "pending",
       })
       .select()
       .single();
