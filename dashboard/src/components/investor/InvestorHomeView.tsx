@@ -32,6 +32,19 @@ interface Props {
   opportunitiesHref?: string;
 }
 
+// Contexto historico publicado pela DSJ. Esses numeros COMPLEMENTAM os
+// dados do bookkeeping interno (Mercury/Airwallex/Revolut) que ainda
+// nao cobrem todo o historico operacional.
+//
+// 2025: $2.3M USD de receita consolidada (operacao plena nos 3 mercados).
+// 2026 offset: +$250K USD que ja foram capturados mas ainda nao constam
+//   no bookkeeping atual (CSVs ainda sendo importados).
+// Margens historicas: 20-35% (operacao e-commerce com produtos validados).
+const REVENUE_2025_USD = 2_300_000;
+const REVENUE_2026_OFFSET_USD = 250_000;
+const HISTORICAL_MARGIN_MIN_PCT = 20;
+const HISTORICAL_MARGIN_MAX_PCT = 35;
+
 export function InvestorHomeView({
   metrics,
   pnl12m,
@@ -40,14 +53,40 @@ export function InvestorHomeView({
   opportunitiesHref = "/investor/opportunities",
 }: Props) {
   // Calcular metricas derivadas a partir do P&L 12m
-  const totalRevenue12m = pnl12m.reduce((s, p) => s + (p.revenue || 0), 0);
+  const rawRevenue12m = pnl12m.reduce((s, p) => s + (p.revenue || 0), 0);
   const totalCosts12m = pnl12m.reduce((s, p) => s + (p.total_costs || 0), 0);
-  const totalProfit12m = totalRevenue12m - totalCosts12m;
-  const avgMargin = totalRevenue12m > 0 ? (totalProfit12m / totalRevenue12m) * 100 : 0;
+  // Revenue 2026 com offset de dados pendentes de importacao
+  const totalRevenue2026 = rawRevenue12m + REVENUE_2026_OFFSET_USD;
+  const totalProfit12m = totalRevenue2026 - totalCosts12m;
   const profitableMonths = pnl12m.filter((p) => p.net_profit > 0).length;
   const completed = metrics?.opportunities_completed || 0;
   const losses = metrics?.opportunities_loss_count || 0;
   const successRate = completed > 0 ? ((completed - losses) / completed) * 100 : null;
+  // Receita mensal media usando offset
+  const avgMonthlyRevenue =
+    pnl12m.length > 0 ? totalRevenue2026 / Math.max(pnl12m.length, 1) : 0;
+  // Total acumulado historico (2025 + 2026 atual)
+  const totalRevenueAllTime = REVENUE_2025_USD + totalRevenue2026;
+
+  // Prazo medio em meses a partir das oportunidades abertas (ou default 1.5)
+  const openWithDays = openReceivables.filter(
+    (r) => r.financing_redemption_days && r.financing_redemption_days > 0
+  );
+  const avgRedemptionDays =
+    openWithDays.length > 0
+      ? openWithDays.reduce((s, r) => s + (r.financing_redemption_days || 0), 0) /
+        openWithDays.length
+      : 45;
+  const avgRedemptionMonths = avgRedemptionDays / 30;
+  // Taxa media de juros das ofertas abertas
+  const openWithRate = openReceivables.filter(
+    (r) => r.financing_interest_rate_pct && r.financing_interest_rate_pct > 0
+  );
+  const avgMonthlyRatePct =
+    openWithRate.length > 0
+      ? openWithRate.reduce((s, r) => s + (r.financing_interest_rate_pct || 0), 0) /
+        openWithRate.length
+      : null;
 
   return (
     <div className="space-y-6">
@@ -65,11 +104,11 @@ export function InvestorHomeView({
           </p>
           <div className="flex gap-3 mt-6 flex-wrap text-xs">
             <Pill icon={<Globe size={11} />}>3 empresas · 4 moedas</Pill>
-            <Pill icon={<Building2 size={11} />}>
-              {metrics?.months_operating || 0} meses operando
+            <Pill icon={<TrendingUp size={11} />}>
+              {formatCurrency(totalRevenueAllTime)} de receita acumulada
             </Pill>
-            <Pill icon={<CheckCircle size={11} />}>
-              {completed} operacoes ja completadas
+            <Pill icon={<Building2 size={11} />}>
+              Margem operacional {HISTORICAL_MARGIN_MIN_PCT}–{HISTORICAL_MARGIN_MAX_PCT}%
             </Pill>
           </div>
         </div>
@@ -80,26 +119,26 @@ export function InvestorHomeView({
         <Metric
           icon={<TrendingUp size={18} />}
           color="green"
-          label="Receita mensal"
-          value={formatCurrency(metrics?.total_revenue_usd || 0)}
-          sub={`${metrics?.margin_pct?.toFixed(0) || 0}% margem media`}
+          label="Receita 2025"
+          value={formatCurrency(REVENUE_2025_USD)}
+          sub={`Operacao plena · ${HISTORICAL_MARGIN_MIN_PCT}-${HISTORICAL_MARGIN_MAX_PCT}% margem`}
+        />
+        <Metric
+          icon={<TrendingUp size={18} />}
+          color="blue"
+          label="Receita 2026 (parcial)"
+          value={formatCurrency(totalRevenue2026)}
+          sub={`Media ${formatCurrency(avgMonthlyRevenue)}/mes`}
         />
         <Metric
           icon={<Calendar size={18} />}
-          color="blue"
-          label="Meses operando"
-          value={String(metrics?.months_operating || 0)}
-          sub={`${profitableMonths}/12 meses lucrativos`}
-        />
-        <Metric
-          icon={<CheckCircle size={18} />}
           color="purple"
-          label="Operacoes"
-          value={String(completed)}
+          label="Retorno em curto prazo"
+          value={`~${avgRedemptionMonths.toFixed(1)} meses`}
           sub={
-            successRate != null
-              ? `${successRate.toFixed(0)}% sucesso`
-              : "sem historico ainda"
+            avgMonthlyRatePct != null
+              ? `${avgMonthlyRatePct.toFixed(1)}%/mes media nas ofertas`
+              : "Taxa configurada por operacao"
           }
         />
         <Metric
@@ -108,9 +147,9 @@ export function InvestorHomeView({
           label="Capital retornado"
           value={formatCurrency(metrics?.total_capital_returned || 0)}
           sub={
-            metrics?.opportunities_avg_return
-              ? `${metrics.opportunities_avg_return.toFixed(0)}% retorno medio`
-              : "—"
+            successRate != null
+              ? `${successRate.toFixed(0)}% sucesso · ${completed} operacoes`
+              : `${profitableMonths}/12 meses lucrativos`
           }
         />
       </div>
@@ -141,6 +180,50 @@ export function InvestorHomeView({
             jurisdiction="Delaware, USA"
             currency="USD"
             description="Estrutura de suporte. Conta Mercury para flexibilidade operacional."
+          />
+        </div>
+      </div>
+
+      {/* Por que investir com a DSJ — pitch comercial */}
+      <div className="card border-2 border-brand-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-brand-50 to-amber-50 px-6 py-4 border-b border-brand-100">
+          <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+            <Award size={18} className="text-brand-600" />
+            Por que investir com a DSJ
+          </h3>
+          <p className="text-xs text-slate-600 mt-1">
+            Estamos construindo uma operacao em ritmo de crescimento e preferimos
+            dividir esse upside com voce do que pegar emprestimo de banco.
+          </p>
+        </div>
+        <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Differential
+            icon={<TrendingUp size={20} className="text-green-600" />}
+            title="Margens operacionais altas"
+            text={`Operacao com produtos validados gera margens entre ${HISTORICAL_MARGIN_MIN_PCT}% e ${HISTORICAL_MARGIN_MAX_PCT}% — espaco real pra dividir lucros sem comprometer o caixa.`}
+          />
+          <Differential
+            icon={<Calendar size={20} className="text-blue-600" />}
+            title="Retorno em curto prazo"
+            text={`Operacoes pagam em meses, nao em anos. Media atual em torno de ${avgRedemptionMonths.toFixed(
+              1
+            )} meses — voce ve seu capital girar rapido.`}
+          />
+          <Differential
+            icon={<Wallet size={20} className="text-amber-600" />}
+            title="Taxas elevadas"
+            text={
+              avgMonthlyRatePct != null
+                ? `Taxas medias atuais de ${avgMonthlyRatePct.toFixed(
+                    1
+                  )}% ao mes (juros compostos) — bem acima de renda fixa tradicional.`
+                : "Taxas mensais com juros compostos, definidas por operacao — sempre acima de renda fixa tradicional."
+            }
+          />
+          <Differential
+            icon={<FileSignature size={20} className="text-purple-600" />}
+            title="Compartilhamento de upside"
+            text="A DSJ prefere dividir o lucro de recebiveis futuros com voce a captar capital de bancos. Quando a operacao gira, voce gira junto."
           />
         </div>
       </div>
@@ -184,31 +267,35 @@ export function InvestorHomeView({
       {/* Performance histórica */}
       <div className="card">
         <div className="card-header flex items-center justify-between">
-          <h3 className="font-semibold">Performance dos ultimos 12 meses</h3>
+          <h3 className="font-semibold">Performance anual</h3>
           <div className="flex gap-3 text-[11px] text-slate-500">
             <span>
-              Receita total:{" "}
+              2025:{" "}
               <strong className="text-slate-700">
-                {formatCurrency(totalRevenue12m)}
+                {formatCurrency(REVENUE_2025_USD)}
               </strong>
             </span>
             <span>
-              Lucro:{" "}
-              <strong className={totalProfit12m >= 0 ? "text-green-700" : "text-red-700"}>
-                {formatCurrency(totalProfit12m)}
+              2026 (parcial):{" "}
+              <strong className="text-slate-700">
+                {formatCurrency(totalRevenue2026)}
               </strong>
             </span>
             <span>
               Margem:{" "}
-              <strong className="text-slate-700">{avgMargin.toFixed(0)}%</strong>
+              <strong className="text-slate-700">
+                {HISTORICAL_MARGIN_MIN_PCT}-{HISTORICAL_MARGIN_MAX_PCT}%
+              </strong>
             </span>
           </div>
         </div>
         <div className="card-body">
           <InvestorRevenueChart data={pnl12m} />
           <p className="text-[10px] text-slate-400 mt-2 italic">
-            Receita consolidada das 3 empresas (USD-equivalente). Dados auditados pelo
-            sistema interno de bookkeeping da DSJ.
+            Receita consolidada das 3 empresas (USD-equivalente). 2025 baseline:{" "}
+            {formatCurrency(REVENUE_2025_USD)}. 2026 inclui {formatCurrency(REVENUE_2026_OFFSET_USD)} de
+            captacao recente ainda em conciliacao bancaria. Margem operacional historica entre{" "}
+            {HISTORICAL_MARGIN_MIN_PCT}% e {HISTORICAL_MARGIN_MAX_PCT}%.
           </p>
         </div>
       </div>
@@ -424,6 +511,26 @@ function EntityCard({
         <span className="bg-white px-1.5 py-0.5 rounded">{currency}</span>
       </div>
       <p className="text-xs text-slate-600 leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+function Differential({
+  icon,
+  title,
+  text,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 bg-slate-50 rounded-lg p-3">
+      <div className="shrink-0 mt-0.5">{icon}</div>
+      <div>
+        <h4 className="font-semibold text-sm text-slate-900">{title}</h4>
+        <p className="text-xs text-slate-600 leading-relaxed mt-1">{text}</p>
+      </div>
     </div>
   );
 }
