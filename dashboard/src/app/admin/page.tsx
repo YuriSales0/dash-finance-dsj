@@ -3,10 +3,13 @@ import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { BookkeepingStatus } from "@/components/dashboard/BookkeepingStatus";
 import { PnlOverview } from "@/components/dashboard/PnlOverview";
 import { BalanceCheck } from "@/components/dashboard/BalanceCheck";
+import { CaixaTotalCard } from "@/components/dashboard/CaixaTotalCard";
 import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, entityColors, entityNames } from "@/lib/format";
-import { AlertTriangle, Wallet } from "lucide-react";
+import { generateOccurrences, bucketName } from "@/lib/debts/occurrences";
+import type { DebtOccurrence } from "@/components/debts/TermCardWithDetails";
+import { AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -48,37 +51,22 @@ export default async function OverviewPage() {
     balanceByCurrency[acc.currency] = (balanceByCurrency[acc.currency] || 0) + acc.balance_current;
   }
 
-  // Recebiveis pendentes por moeda
-  const receivablesByCurrency: Record<string, number> = {};
-  for (const r of receivables) {
-    if (r.status === "paid" || !r.currency) continue;
-    const remaining = r.amount_total - r.amount_received;
-    if (remaining <= 0) continue;
-    receivablesByCurrency[r.currency] = (receivablesByCurrency[r.currency] || 0) + remaining;
-  }
-
-  // Dividas pendentes por moeda
-  const debtsByCurrency: Record<string, number> = {};
+  // Dividas IMEDIATAS (atrasadas + curto prazo) — alinhado com /admin/debts.
+  // Usa a mesma logica de occurrences pra deixar os numeros consistentes
+  // entre Visao Geral (Caixa Total) e Dividas (card "A pagar imediato").
+  const allDebtOccurrences: DebtOccurrence[] = [];
   for (const d of debts) {
-    if (d.status === "paid" || !d.currency) continue;
-    const remaining = d.amount_total - d.amount_paid;
-    if (remaining <= 0) continue;
-    debtsByCurrency[d.currency] = (debtsByCurrency[d.currency] || 0) + remaining;
+    allDebtOccurrences.push(...generateOccurrences(d, today));
   }
+  const immediateOccurrences = allDebtOccurrences.filter((o) => {
+    const b = bucketName(o.days_from_today);
+    return b === "overdue" || b === "short";
+  });
 
   // Ultima atualizacao
   const lastSyncedAccount = accounts
     .filter((a) => a.last_synced_at)
     .sort((a, b) => (b.last_synced_at || "").localeCompare(a.last_synced_at || ""))[0];
-
-  // Moedas usadas
-  const allCurrencies = Array.from(
-    new Set([
-      ...Object.keys(balanceByCurrency),
-      ...Object.keys(receivablesByCurrency),
-      ...Object.keys(debtsByCurrency),
-    ])
-  ).filter((c) => c);
 
   return (
     <>
@@ -103,47 +91,13 @@ export default async function OverviewPage() {
         {/* Verificacao: Lucro acumulado bate com variacao real do saldo? */}
         <BalanceCheck rows={balanceCheck} />
 
-        {/* Caixa Total por moeda (saldo + recebiveis + dividas) */}
-        <div className="card card-body bg-gradient-to-r from-slate-50 to-white">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-brand-50 rounded-lg">
-              <Wallet size={18} className="text-brand-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-700">Caixa Total</p>
-              <p className="text-xs text-slate-500">Saldos bancarios + recebiveis - dividas, por moeda</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {allCurrencies.length === 0 ? (
-              <p className="text-sm text-slate-400">Nenhuma conta com saldo</p>
-            ) : (
-              allCurrencies.map((currency) => {
-                const bal = balanceByCurrency[currency] || 0;
-                const recv = receivablesByCurrency[currency] || 0;
-                const debt = debtsByCurrency[currency] || 0;
-                return (
-                  <div key={currency} className="bg-white rounded-lg p-3 border border-slate-200">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold bg-slate-100 px-1.5 py-0.5 rounded">{currency}</span>
-                    </div>
-                    <p className={`text-xl font-bold ${bal >= 0 ? "text-slate-900" : "text-red-600"}`}>
-                      {formatCurrency(bal, currency)}
-                    </p>
-                    <div className="mt-1.5 space-y-0.5 text-[11px]">
-                      {recv > 0 && (
-                        <p className="text-green-600">+ {formatCurrency(recv, currency)} a receber</p>
-                      )}
-                      {debt > 0 && (
-                        <p className="text-red-600">- {formatCurrency(debt, currency)} a pagar</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+        {/* Caixa Total por moeda — clicavel pra ver detalhamento */}
+        <CaixaTotalCard
+          balanceByCurrency={balanceByCurrency}
+          receivables={receivables}
+          debts={debts}
+          immediateOccurrences={immediateOccurrences}
+        />
 
         {/* Alertas */}
         {pendingReviewCount > 0 && (
