@@ -5,22 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { InviteGenerator } from "@/components/invite/InviteGenerator";
 import { InvestorRevenueChart } from "@/components/dashboard/InvestorRevenueChart";
-import { formatCurrency, formatDate } from "@/lib/format";
-import { Users, Link2, Eye, EyeOff, TrendingUp, Calendar, CheckCircle, Award } from "lucide-react";
+import { formatCurrency, formatDate, entityNames } from "@/lib/format";
+import {
+  Users, Link2, Eye, EyeOff, TrendingUp, Calendar, CheckCircle, Award, FileText,
+} from "lucide-react";
+import type { Receivable } from "@/types/database";
 
 interface Props {
   activeTab: "investors" | "invites" | "preview";
   investors: any[];
   opportunities: any[];
   investments: any[];
-  receivables: {
-    id: number;
-    description: string;
-    amount_total: number;
-    currency: string;
-    interest_rate: number;
-    redemption_days: number;
-  }[];
+  receivables: Receivable[];
   metrics: any;
   pnl12m: any[];
 }
@@ -61,10 +57,35 @@ function Inner({ activeTab, investors, opportunities, investments, receivables, 
       </div>
 
       {tab === "investors" && (
-        <InvestorsContent investors={investors} opportunities={opportunities} investments={investments} />
+        <InvestorsContent
+          investors={investors}
+          opportunities={opportunities}
+          investments={investments}
+          receivables={receivables}
+        />
       )}
-      {tab === "invites" && <InviteGenerator receivables={receivables} />}
-      {tab === "preview" && <PreviewContent metrics={metrics} pnl12m={pnl12m} opportunities={opportunities} />}
+      {tab === "invites" && (
+        <InviteGenerator
+          receivables={receivables
+            .filter((r) => r.open_for_financing && r.status !== "paid")
+            .map((r) => ({
+              id: r.id,
+              description: r.description,
+              amount_total: r.amount_total,
+              currency: r.currency,
+              interest_rate: r.financing_interest_rate_pct || 0,
+              redemption_days: r.financing_redemption_days || 0,
+            }))}
+        />
+      )}
+      {tab === "preview" && (
+        <PreviewContent
+          metrics={metrics}
+          pnl12m={pnl12m}
+          opportunities={opportunities}
+          receivables={receivables}
+        />
+      )}
     </div>
   );
 }
@@ -95,12 +116,129 @@ function TabButton({
   );
 }
 
-function InvestorsContent({ investors, opportunities, investments }: { investors: any[]; opportunities: any[]; investments: any[] }) {
+function InvestorsContent({
+  investors,
+  opportunities,
+  investments,
+  receivables,
+}: {
+  investors: any[];
+  opportunities: any[];
+  investments: any[];
+  receivables: Receivable[];
+}) {
   const approved = investors.filter((i) => i.status === "approved");
   const pending = investors.filter((i) => i.status === "pending");
+  const openReceivables = receivables.filter(
+    (r) => r.open_for_financing && r.status !== "paid"
+  );
 
   return (
     <div className="space-y-6">
+      {/* Recebiveis abertos para financiamento — fonte primaria de oportunidades */}
+      <div className="card">
+        <div className="card-header flex items-center justify-between">
+          <h3 className="font-semibold">Recebiveis abertos para financiamento</h3>
+          <Badge variant={openReceivables.length > 0 ? "info" : "neutral"}>
+            {openReceivables.length}
+          </Badge>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {openReceivables.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">
+              Nenhum recebivel aberto pra financiamento. Crie ou edite um recebivel em{" "}
+              <a href="/admin/receivables" className="text-brand-600 underline">
+                /admin/receivables
+              </a>{" "}
+              e marque "Abrir para financiamento por investidores".
+            </div>
+          ) : (
+            openReceivables.map((r) => {
+              const raised = r.financing_raised || 0;
+              const pct = r.amount_total > 0 ? (raised / r.amount_total) * 100 : 0;
+              const available = r.amount_total - raised;
+              const days = Math.round(
+                (new Date(r.due_date).getTime() - new Date().getTime()) / 86400000
+              );
+              return (
+                <div key={r.id} className="p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <FileText size={14} className="text-slate-500" />
+                        {r.description}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {r.counterparty || "—"} · {entityNames[r.entity_id] || r.entity_id}
+                      </p>
+                    </div>
+                    <Badge variant={r.status === "overdue" ? "danger" : "info"}>
+                      {r.status === "overdue" ? "Atrasado" : "Aberto"}
+                    </Badge>
+                  </div>
+                  {r.financing_terms && (
+                    <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded mb-3">
+                      {r.financing_terms}
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs mt-3">
+                    <div>
+                      <p className="text-slate-500">Valor total</p>
+                      <p className="font-mono font-semibold">
+                        {formatCurrency(r.amount_total, r.currency)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Taxa</p>
+                      <p className="font-semibold">
+                        {r.financing_interest_rate_pct || 0}% / periodo
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Prazo</p>
+                      <p className="font-semibold">{r.financing_redemption_days || 0} dias</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Vencimento</p>
+                      <p className="font-semibold">
+                        {formatDate(r.due_date)} ({days}d)
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-500">Min / Max</p>
+                      <p className="font-semibold">
+                        {formatCurrency(r.financing_min_amount || 0, r.currency)}
+                        {r.financing_max_amount && (
+                          <> / {formatCurrency(r.financing_max_amount, r.currency)}</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-500">
+                        Captado: {formatCurrency(raised, r.currency)} /{" "}
+                        {formatCurrency(r.amount_total, r.currency)}
+                      </span>
+                      <span className="font-semibold">{pct.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-brand-600"
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Disponivel: {formatCurrency(available, r.currency)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
       {pending.length > 0 && (
         <div className="card">
           <div className="card-header flex items-center justify-between">
@@ -127,9 +265,11 @@ function InvestorsContent({ investors, opportunities, investments }: { investors
         </div>
       )}
 
+      {opportunities.length > 0 && (
       <div className="card">
         <div className="card-header flex items-center justify-between">
-          <h3 className="font-semibold">Oportunidades</h3>
+          <h3 className="font-semibold">Oportunidades de produto (legacy)</h3>
+          <span className="text-[10px] text-slate-400">tabela opportunities</span>
         </div>
         <div className="divide-y divide-slate-100">
           {opportunities.length === 0 && (
@@ -192,6 +332,7 @@ function InvestorsContent({ investors, opportunities, investments }: { investors
           })}
         </div>
       </div>
+      )}
 
       <div className="card">
         <div className="card-header"><h3 className="font-semibold">Investidores aprovados</h3></div>
@@ -232,8 +373,21 @@ function InvestorsContent({ investors, opportunities, investments }: { investors
   );
 }
 
-function PreviewContent({ metrics, pnl12m, opportunities }: { metrics: any; pnl12m: any[]; opportunities: any[] }) {
+function PreviewContent({
+  metrics,
+  pnl12m,
+  opportunities,
+  receivables,
+}: {
+  metrics: any;
+  pnl12m: any[];
+  opportunities: any[];
+  receivables: Receivable[];
+}) {
   const openOpportunities = opportunities.filter((o) => o.status === "open" || o.status === "active");
+  const openReceivables = receivables.filter(
+    (r) => r.open_for_financing && r.status !== "paid"
+  );
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -271,9 +425,60 @@ function PreviewContent({ metrics, pnl12m, opportunities }: { metrics: any; pnl1
             </div>
           </div>
 
-          <h3 className="font-semibold mb-3">Oportunidades abertas ({openOpportunities.length})</h3>
-          {openOpportunities.length === 0 && (
-            <p className="text-sm text-slate-500">Nenhuma oportunidade aberta no momento.</p>
+          <h3 className="font-semibold mb-3">
+            Recebiveis abertos para financiamento ({openReceivables.length})
+          </h3>
+          {openReceivables.length === 0 ? (
+            <p className="text-sm text-slate-500">Nenhum recebivel aberto no momento.</p>
+          ) : (
+            <div className="space-y-2">
+              {openReceivables.map((r) => {
+                const raised = r.financing_raised || 0;
+                const pct = r.amount_total > 0 ? (raised / r.amount_total) * 100 : 0;
+                const days = Math.round(
+                  (new Date(r.due_date).getTime() - new Date().getTime()) / 86400000
+                );
+                return (
+                  <div key={r.id} className="border border-slate-200 rounded-lg p-3 bg-white">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="font-medium text-sm">{r.description}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{r.counterparty}</p>
+                      </div>
+                      <Badge variant="info">Aberto</Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <p className="text-slate-500">Taxa</p>
+                        <p className="font-semibold">
+                          {r.financing_interest_rate_pct || 0}% / periodo
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Prazo</p>
+                        <p className="font-semibold">
+                          {r.financing_redemption_days || 0} dias ({days}d ate venc.)
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Captado</p>
+                        <p className="font-semibold">{pct.toFixed(0)}%</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {openOpportunities.length > 0 && (
+            <>
+              <h4 className="font-semibold mt-6 mb-2 text-sm text-slate-600">
+                Oportunidades de produto (legacy)
+              </h4>
+              <p className="text-xs text-slate-400">
+                {openOpportunities.length} oportunidade(s) na tabela legacy
+              </p>
+            </>
           )}
         </div>
       </div>

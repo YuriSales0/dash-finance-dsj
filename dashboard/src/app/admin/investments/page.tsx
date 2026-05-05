@@ -89,14 +89,7 @@ export default async function InvestmentsPage({
           investors={investors}
           opportunities={opportunities}
           investments={investments}
-          receivables={receivables.filter((r) => r.status !== "paid").map((r) => ({
-            id: r.id,
-            description: r.description,
-            amount_total: r.amount_total,
-            currency: r.currency,
-            interest_rate: r.financing_interest_rate_pct || 0,
-            redemption_days: r.financing_redemption_days || 0,
-          }))}
+          receivables={receivables.filter((r) => r.status !== "paid")}
           metrics={metrics}
           pnl12m={pnl12m}
         />

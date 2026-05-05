@@ -22,6 +22,12 @@ export function ReceivablesTable({ receivables }: Props) {
     chargeback_amount: "",
     refund_amount: "",
     notes: "",
+    open_for_financing: false,
+    financing_interest_rate_pct: "",
+    financing_min_amount: "",
+    financing_max_amount: "",
+    financing_redemption_days: "",
+    financing_terms: "",
   });
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -36,6 +42,12 @@ export function ReceivablesTable({ receivables }: Props) {
       chargeback_amount: "",
       refund_amount: "",
       notes: r.notes || "",
+      open_for_financing: !!r.open_for_financing,
+      financing_interest_rate_pct: r.financing_interest_rate_pct != null ? String(r.financing_interest_rate_pct) : "",
+      financing_min_amount: r.financing_min_amount != null ? String(r.financing_min_amount) : "",
+      financing_max_amount: r.financing_max_amount != null ? String(r.financing_max_amount) : "",
+      financing_redemption_days: r.financing_redemption_days != null ? String(r.financing_redemption_days) : "",
+      financing_terms: r.financing_terms || "",
     });
     setError(null);
   }
@@ -51,6 +63,16 @@ export function ReceivablesTable({ receivables }: Props) {
       amount_received: Number(form.amount_received),
       status: form.status,
       notes: form.notes || null,
+      open_for_financing: form.open_for_financing,
+      financing_interest_rate_pct: form.open_for_financing && form.financing_interest_rate_pct
+        ? Number(form.financing_interest_rate_pct) : null,
+      financing_min_amount: form.open_for_financing && form.financing_min_amount
+        ? Number(form.financing_min_amount) : null,
+      financing_max_amount: form.open_for_financing && form.financing_max_amount
+        ? Number(form.financing_max_amount) : null,
+      financing_redemption_days: form.open_for_financing && form.financing_redemption_days
+        ? Number(form.financing_redemption_days) : null,
+      financing_terms: form.open_for_financing ? form.financing_terms || null : null,
     };
 
     // Se ouve chargeback ou reembolso, deduzir do amount_total
@@ -264,6 +286,95 @@ export function ReceivablesTable({ receivables }: Props) {
                   placeholder="Ex: Chargeback de cliente X em 15/04"
                 />
               </div>
+            </div>
+
+            {/* Financiamento por investidores (SCP) */}
+            <div className="border-t pt-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.open_for_financing}
+                  onChange={(e) => setForm({ ...form, open_for_financing: e.target.checked })}
+                  className="rounded"
+                />
+                <span className="font-medium text-sm">
+                  Abrir para financiamento por investidores (SCP)
+                </span>
+              </label>
+              {form.open_for_financing && (
+                <div className="grid grid-cols-2 gap-3 mt-3 p-3 bg-slate-50 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Taxa de juros (% no periodo)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input text-sm"
+                      value={form.financing_interest_rate_pct}
+                      onChange={(e) =>
+                        setForm({ ...form, financing_interest_rate_pct: e.target.value })
+                      }
+                      placeholder="Ex: 3"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Periodo (dias para resgate)
+                    </label>
+                    <input
+                      type="number"
+                      className="input text-sm"
+                      value={form.financing_redemption_days}
+                      onChange={(e) =>
+                        setForm({ ...form, financing_redemption_days: e.target.value })
+                      }
+                      placeholder="Ex: 30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Minimo por investidor
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input text-sm"
+                      value={form.financing_min_amount}
+                      onChange={(e) =>
+                        setForm({ ...form, financing_min_amount: e.target.value })
+                      }
+                      placeholder="Ex: 1000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Maximo por investidor (opcional)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="input text-sm"
+                      value={form.financing_max_amount}
+                      onChange={(e) =>
+                        setForm({ ...form, financing_max_amount: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      Termos visiveis para o investidor
+                    </label>
+                    <textarea
+                      className="input text-sm"
+                      rows={2}
+                      value={form.financing_terms}
+                      onChange={(e) => setForm({ ...form, financing_terms: e.target.value })}
+                      placeholder="Ex: Antecipacao de payout Shopify ja capturado em 15/04..."
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {error && (
