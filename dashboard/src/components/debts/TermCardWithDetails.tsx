@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, X, Check, Loader2 } from "lucide-react";
+import { Calendar, X, Check, Loader2, DollarSign } from "lucide-react";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
 
 export interface DebtOccurrence {
@@ -10,20 +10,18 @@ export interface DebtOccurrence {
   description: string;
   creditor: string | null;
   entity_id: string;
-  amount: number;
+  amount: number;        // saldo restante DESTA ocorrencia (per_occurrence - partial_paid_on_this)
   currency: string;
   payment_date: string;
   days_from_today: number;
   kind: "pontual" | "recorrente" | "aporte_juros" | "aporte_balloon" | "emprestimo_parcela";
   occurrence_index?: number;
   total_occurrences?: number;
-  per_occurrence_amount: number;
+  per_occurrence_amount: number;     // valor cheio da ocorrencia
+  partial_paid_on_this: number;      // ja pago nesta ocorrencia (0 ate per_occurrence)
   amount_paid: number;
   amount_total: number;
-  // Flag: e a proxima ocorrencia cronologica nao paga desta divida?
-  // Mark paid so e habilitado nesta — pra evitar confusao com out-of-order.
   is_next_unpaid: boolean;
-  // Recorrente sem end_date nunca vira "paid", so "partial".
   is_perpetual_recurring: boolean;
 }
 
@@ -120,17 +118,27 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
   const [marking, setMarking] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // Estado do input de pagamento parcial por ocorrencia (debt_id -> valor digitado)
+  const [partialInput, setPartialInput] = useState<Record<number, string>>({});
+  const [showPartial, setShowPartial] = useState<Record<number, boolean>>({});
 
   const currencies = Object.keys(totals);
   const filtered = occurrences
     .filter((o) => !filterCurrency || o.currency === filterCurrency)
     .sort((a, b) => a.days_from_today - b.days_from_today);
 
-  async function markPaid(occ: DebtOccurrence) {
+  // Paga `paymentAmount` na divida (incrementa amount_paid).
+  // Se omitido, paga o saldo restante DESTA ocorrencia (occ.amount).
+  async function markPaid(occ: DebtOccurrence, paymentAmount?: number) {
+    const value = paymentAmount !== undefined ? paymentAmount : occ.amount;
+    if (!(value > 0)) {
+      setError("Valor deve ser maior que zero");
+      return;
+    }
     setMarking(occ.debt_id);
     setError(null);
     setSuccess(null);
-    const newAmountPaid = Math.round((occ.amount_paid + occ.per_occurrence_amount) * 100) / 100;
+    const newAmountPaid = Math.round((occ.amount_paid + value) * 100) / 100;
     // Recorrente perpetua nunca vira "paid" (sempre tem proxima ocorrencia)
     const wouldBePaid = newAmountPaid >= occ.amount_total && !occ.is_perpetual_recurring;
     const newStatus = wouldBePaid ? "paid" : "partial";
@@ -149,7 +157,15 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
       setError(data.error || `Erro ${res.status}`);
       return;
     }
-    setSuccess(`Marcado: ${formatCurrency(occ.per_occurrence_amount, occ.currency)} pago em "${occ.description}"`);
+    const isFull = Math.abs(value - occ.amount) < 0.005;
+    setSuccess(
+      isFull
+        ? `Saldo de ${formatCurrency(value, occ.currency)} quitado em "${occ.description}"`
+        : `Pagamento parcial de ${formatCurrency(value, occ.currency)} registrado em "${occ.description}"`
+    );
+    // Limpa estado do input desta divida
+    setShowPartial((s) => ({ ...s, [occ.debt_id]: false }));
+    setPartialInput((s) => ({ ...s, [occ.debt_id]: "" }));
     router.refresh();
   }
 
@@ -235,12 +251,12 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
             filtered.map((o, idx) => {
               const isOverdue = o.days_from_today < 0;
               // So permitir marcar pago na PROXIMA cronologica nao paga (evita
-              // confusao com out-of-order — clicar na 5a parcela ignoraria as 1-4)
+              // confusao com out-of-order — clicar na 5a parcela ignoraria as 1-4).
+              // Balloon de aporte e pago no fim, nao via mark-paid incremental.
               const canMarkPaid =
-                (o.kind === "recorrente" ||
-                  o.kind === "emprestimo_parcela" ||
-                  o.kind === "aporte_juros") &&
-                o.is_next_unpaid;
+                o.kind !== "aporte_balloon" && o.is_next_unpaid;
+              const partialOpen = !!showPartial[o.debt_id];
+              const partialVal = partialInput[o.debt_id] ?? "";
               return (
                 <div
                   key={`${o.debt_id}-${idx}`}
@@ -272,24 +288,84 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
                         </span>
                       </div>
                     </div>
-                    <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                    <div className="text-right shrink-0 flex flex-col items-end gap-1 min-w-[180px]">
                       <p className="font-mono font-semibold">
                         {formatCurrency(o.amount, o.currency)}
                       </p>
-                      {canMarkPaid && (
-                        <button
-                          onClick={() => markPaid(o)}
-                          disabled={marking === o.debt_id}
-                          className="text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
-                          title={`Marca esta ocorrencia como paga (incrementa amount_paid em ${formatCurrency(o.per_occurrence_amount, o.currency)})`}
-                        >
-                          {marking === o.debt_id ? (
-                            <Loader2 size={10} className="animate-spin" />
-                          ) : (
-                            <Check size={10} />
+                      {o.partial_paid_on_this > 0 && (
+                        <p className="text-[10px] text-blue-600">
+                          {formatCurrency(o.partial_paid_on_this, o.currency)} ja pago
+                          {o.per_occurrence_amount > 0 && (
+                            <> de {formatCurrency(o.per_occurrence_amount, o.currency)}</>
                           )}
-                          Marcar pago
-                        </button>
+                        </p>
+                      )}
+                      {canMarkPaid && !partialOpen && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => markPaid(o)}
+                            disabled={marking === o.debt_id}
+                            className="text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
+                            title={`Quita o saldo restante: ${formatCurrency(o.amount, o.currency)}`}
+                          >
+                            {marking === o.debt_id ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                              <Check size={10} />
+                            )}
+                            Quitar saldo
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowPartial((s) => ({ ...s, [o.debt_id]: true }));
+                              setPartialInput((s) => ({ ...s, [o.debt_id]: o.amount.toFixed(2) }));
+                            }}
+                            disabled={marking === o.debt_id}
+                            className="text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                            title="Registrar pagamento parcial (saldo devedor atualiza)"
+                          >
+                            <DollarSign size={10} />
+                            Parcial
+                          </button>
+                        </div>
+                      )}
+                      {canMarkPaid && partialOpen && (
+                        <div className="flex items-center gap-1 w-full">
+                          <span className="text-[10px] text-slate-500 shrink-0">{o.currency}</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            max={o.amount.toFixed(2)}
+                            value={partialVal}
+                            onChange={(e) =>
+                              setPartialInput((s) => ({ ...s, [o.debt_id]: e.target.value }))
+                            }
+                            className="text-[11px] font-mono border border-slate-300 rounded px-1.5 py-0.5 w-24 text-right"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => markPaid(o, Number(partialVal) || 0)}
+                            disabled={marking === o.debt_id || !(Number(partialVal) > 0)}
+                            className="text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
+                          >
+                            {marking === o.debt_id ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                              <Check size={10} />
+                            )}
+                            OK
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowPartial((s) => ({ ...s, [o.debt_id]: false }));
+                              setPartialInput((s) => ({ ...s, [o.debt_id]: "" }));
+                            }}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 px-1"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -300,10 +376,10 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
         </div>
 
         <div className="p-3 border-t border-slate-200 bg-slate-50 text-[10px] text-slate-500">
-          <strong>Marcar pago:</strong> incrementa amount_paid no valor da ocorrencia.
-          A proxima ocorrencia recorrente continua aparecendo em meses subsequentes.
-          Quando o CSV for importado e a transacao real for classificada, a reconciliacao
-          confirma o pagamento.
+          <strong>Quitar saldo:</strong> paga o saldo restante desta ocorrencia (= valor exibido).
+          {" "}<strong>Parcial:</strong> paga apenas parte; o saldo devedor desta ocorrencia
+          atualiza automaticamente. Recorrentes continuam aparecendo nos proximos meses.
+          Quando o CSV for importado, a reconciliacao fecha o ciclo.
         </div>
       </div>
     </div>

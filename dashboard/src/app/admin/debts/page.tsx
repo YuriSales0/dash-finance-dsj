@@ -52,26 +52,39 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
     is_perpetual_recurring: isPerpetualRecurring,
   };
 
+  // Helper: calcula partial carryover (sobra paga acumulada na primeira nao paga)
+  // a partir de amount_paid e per_occurrence.
+  function partialCarryoverFor(perOcc: number): { paidFull: number; partial: number } {
+    if (perOcc <= 0) return { paidFull: 0, partial: 0 };
+    const paidFull = Math.floor(d.amount_paid / perOcc);
+    const partial = d.amount_paid - paidFull * perOcc;
+    return { paidFull, partial };
+  }
+
   if (isAporteParcelado) {
     const intDays = intervalDaysFor(d.interest_payment_interval);
     const interestPerPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
     if (intDays > 0 && interestPerPayment > 0) {
       const limitDays = Math.min(daysUntilDue, TERM_HORIZON_DAYS);
       const totalInstallments = Math.max(0, Math.floor(limitDays / intDays));
-      const paidInstallments = Math.floor(d.amount_paid / interestPerPayment);
+      const { paidFull, partial } = partialCarryoverFor(interestPerPayment);
       for (let i = 1; i <= totalInstallments; i++) {
-        if (i <= paidInstallments) continue;
+        if (i <= paidFull) continue;
+        const isFirstUnpaid = i === paidFull + 1;
+        const partialOnThis = isFirstUnpaid ? partial : 0;
+        const remainingOnThis = interestPerPayment - partialOnThis;
         const paymentDate = new Date(today.getTime() + i * intDays * 86400000);
         out.push({
           ...baseFields,
-          amount: interestPerPayment,
+          amount: remainingOnThis,
           payment_date: paymentDate.toISOString().slice(0, 10),
           days_from_today: i * intDays,
           kind: "aporte_juros",
           occurrence_index: i,
           total_occurrences: totalInstallments,
           per_occurrence_amount: interestPerPayment,
-          is_next_unpaid: i === paidInstallments + 1,
+          partial_paid_on_this: partialOnThis,
+          is_next_unpaid: isFirstUnpaid,
         });
       }
     }
@@ -85,7 +98,8 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
         days_from_today: daysUntilDue,
         kind: "aporte_balloon",
         per_occurrence_amount: balloon,
-        is_next_unpaid: false, // balloon e pago no fim, nao via mark-paid incremental
+        partial_paid_on_this: 0,
+        is_next_unpaid: false,
       });
     }
   } else if (isEmprestimoParcelado) {
@@ -95,21 +109,25 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
       const installmentsTotal = Math.floor(periodDays / intDays);
       if (installmentsTotal > 0) {
         const perInstallment = d.amount_total / installmentsTotal;
-        const paidInstallments = Math.floor(d.amount_paid / perInstallment);
+        const { paidFull, partial } = partialCarryoverFor(perInstallment);
         for (let i = 1; i <= installmentsTotal; i++) {
-          if (i <= paidInstallments) continue;
+          if (i <= paidFull) continue;
+          const isFirstUnpaid = i === paidFull + 1;
+          const partialOnThis = isFirstUnpaid ? partial : 0;
+          const remainingOnThis = perInstallment - partialOnThis;
           const paymentDate = new Date(issueDate.getTime() + i * intDays * 86400000);
           const daysFromToday = (paymentDate.getTime() - today.getTime()) / 86400000;
           out.push({
             ...baseFields,
-            amount: perInstallment,
+            amount: remainingOnThis,
             payment_date: paymentDate.toISOString().slice(0, 10),
             days_from_today: daysFromToday,
             kind: "emprestimo_parcela",
             occurrence_index: i,
             total_occurrences: installmentsTotal,
             per_occurrence_amount: perInstallment,
-            is_next_unpaid: i === paidInstallments + 1,
+            partial_paid_on_this: partialOnThis,
+            is_next_unpaid: isFirstUnpaid,
           });
         }
       } else {
@@ -120,13 +138,12 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
           days_from_today: daysUntilDue,
           kind: "pontual",
           per_occurrence_amount: remaining,
+          partial_paid_on_this: 0,
           is_next_unpaid: false,
         });
       }
     }
   } else if (d.is_recurring && d.recurrence_interval) {
-    // Recorrente: itera todas as ocorrencias entre issue_date e (today + horizonte | recurrence_end_date),
-    // pulando as primeiras `paidOccurrences` (em ordem cronologica desde a primeira ocorrencia, due_date).
     const intDays = intervalDaysFor(d.recurrence_interval);
     const perOccurrence = d.amount_total + commission;
     if (intDays > 0 && perOccurrence > 0) {
@@ -134,23 +151,27 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
       const horizonEnd = new Date(today.getTime() + TERM_HORIZON_DAYS * 86400000);
       const lastDate = recurrenceEnd && recurrenceEnd < horizonEnd ? recurrenceEnd : horizonEnd;
 
-      const paidOccurrences = Math.floor(d.amount_paid / perOccurrence);
+      const { paidFull, partial } = partialCarryoverFor(perOccurrence);
       let occDate = new Date(dueDate);
       let occIndex = 0;
       let firstUnpaidAdded = false;
       while (occDate <= lastDate) {
         occIndex++;
-        if (occIndex > paidOccurrences) {
+        if (occIndex > paidFull) {
+          const isFirstUnpaid = !firstUnpaidAdded;
+          const partialOnThis = isFirstUnpaid ? partial : 0;
+          const remainingOnThis = perOccurrence - partialOnThis;
           const days = (occDate.getTime() - today.getTime()) / 86400000;
           out.push({
             ...baseFields,
-            amount: perOccurrence,
+            amount: remainingOnThis,
             payment_date: occDate.toISOString().slice(0, 10),
             days_from_today: days,
             kind: "recorrente",
             occurrence_index: occIndex,
             per_occurrence_amount: perOccurrence,
-            is_next_unpaid: !firstUnpaidAdded,
+            partial_paid_on_this: partialOnThis,
+            is_next_unpaid: isFirstUnpaid,
           });
           firstUnpaidAdded = true;
         }
@@ -158,16 +179,19 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
       }
     }
   } else {
-    // Pontual
-    const total = remaining + (isAporte ? commission : 0);
+    // Pontual: amount_paid pode ser parcial. Mostra o saldo restante.
+    const total = d.amount_total + (isAporte ? commission : 0);
+    const partialOnThis = Math.min(d.amount_paid, total);
+    const remainingOnThis = total - partialOnThis;
     out.push({
       ...baseFields,
-      amount: total,
+      amount: remainingOnThis,
       payment_date: d.due_date,
       days_from_today: daysUntilDue,
       kind: "pontual",
       per_occurrence_amount: total,
-      is_next_unpaid: false,
+      partial_paid_on_this: partialOnThis,
+      is_next_unpaid: true,
     });
   }
 
