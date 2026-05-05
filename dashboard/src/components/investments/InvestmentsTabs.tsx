@@ -304,74 +304,10 @@ function InvestorsContent({
         </div>
       )}
 
-      {opportunities.length > 0 && (
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <h3 className="font-semibold">Oportunidades de produto (legacy)</h3>
-          <span className="text-[10px] text-slate-400">tabela opportunities</span>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {opportunities.length === 0 && (
-            <div className="p-8 text-center text-slate-400 text-sm">
-              Nenhuma oportunidade. Crie um recebivel aberto pra financiamento em /admin/receivables.
-            </div>
-          )}
-          {opportunities.map((opp) => {
-            const pct = opp.target_amount > 0 ? (opp.raised_amount / opp.target_amount) * 100 : 0;
-            const oppInvestments = investments.filter((i) => i.opportunity_id === opp.id);
-            return (
-              <div key={opp.id} className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h4 className="font-semibold">{opp.title}</h4>
-                    <p className="text-xs text-slate-500 mt-0.5">{opp.product_name}</p>
-                  </div>
-                  <Badge variant={
-                    opp.status === "active" ? "info" :
-                    opp.status === "open" ? "warning" :
-                    opp.status === "completed" ? "success" : "neutral"
-                  }>
-                    {opp.status}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-4 gap-4 text-xs mt-3">
-                  <div>
-                    <p className="text-slate-500">Captado</p>
-                    <p className="font-mono font-semibold">
-                      {formatCurrency(opp.raised_amount)} / {formatCurrency(opp.target_amount)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">ROAS comprovado</p>
-                    <p className="font-semibold">{opp.proven_roas?.toFixed(1) || "-"}x</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Margem comprovada</p>
-                    <p className="font-semibold">{opp.proven_margin?.toFixed(0) || "-"}%</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Investidores</p>
-                    <p className="font-semibold">{oppInvestments.length}</p>
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-brand-600" style={{ width: `${Math.min(pct, 100)}%` }} />
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">{pct.toFixed(0)}% captado</p>
-                </div>
-                {opp.actual_return_pct !== null && (
-                  <div className="mt-3 p-2 bg-green-50 rounded text-xs">
-                    <strong>Retorno real:</strong> {opp.actual_return_pct.toFixed(1)}% (estimado:
-                    {" "}{opp.return_estimate_min}%-{opp.return_estimate_max}%)
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      )}
+      {/* L17: card de "Oportunidades de produto (legacy)" removido. Recebiveis
+          abertos pra financiamento ja sao mostrados no card primario acima.
+          A tabela `opportunities` ainda existe no DB pra historico, mas nao
+          confunde mais o admin com dados duplicados. */}
 
       <div className="card">
         <div className="card-header"><h3 className="font-semibold">Investidores aprovados</h3></div>
@@ -518,16 +454,7 @@ function PreviewContent({
               })}
             </div>
           )}
-          {openOpportunities.length > 0 && (
-            <>
-              <h4 className="font-semibold mt-6 mb-2 text-sm text-slate-600">
-                Oportunidades de produto (legacy)
-              </h4>
-              <p className="text-xs text-slate-400">
-                {openOpportunities.length} oportunidade(s) na tabela legacy
-              </p>
-            </>
-          )}
+          {/* opportunities legacy: omitido do preview pra nao confundir o admin */}
         </div>
       </div>
 

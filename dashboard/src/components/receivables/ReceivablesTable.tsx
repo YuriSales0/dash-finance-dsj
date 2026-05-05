@@ -57,6 +57,9 @@ export function ReceivablesTable({ receivables }: Props) {
     setLoading(true);
     setError(null);
 
+    // L20: preservar financing_* mesmo se toggle off — facilita reativar depois
+    // sem perder a config (taxa, min, max, prazo, termos). open_for_financing
+    // e o flag que controla visibilidade ao investidor.
     const updates: any = {
       id: editing.id,
       amount_total: Number(form.amount_total),
@@ -64,15 +67,15 @@ export function ReceivablesTable({ receivables }: Props) {
       status: form.status,
       notes: form.notes || null,
       open_for_financing: form.open_for_financing,
-      financing_interest_rate_pct: form.open_for_financing && form.financing_interest_rate_pct
+      financing_interest_rate_pct: form.financing_interest_rate_pct
         ? Number(form.financing_interest_rate_pct) : null,
-      financing_min_amount: form.open_for_financing && form.financing_min_amount
+      financing_min_amount: form.financing_min_amount
         ? Number(form.financing_min_amount) : null,
-      financing_max_amount: form.open_for_financing && form.financing_max_amount
+      financing_max_amount: form.financing_max_amount
         ? Number(form.financing_max_amount) : null,
-      financing_redemption_days: form.open_for_financing && form.financing_redemption_days
+      financing_redemption_days: form.financing_redemption_days
         ? Number(form.financing_redemption_days) : null,
-      financing_terms: form.open_for_financing ? form.financing_terms || null : null,
+      financing_terms: form.financing_terms || null,
     };
 
     // Se ouve chargeback ou reembolso, deduzir do amount_total
@@ -175,7 +178,7 @@ export function ReceivablesTable({ receivables }: Props) {
                        r.status === "overdue" ? "Atrasado" :
                        r.status === "defaulted" ? "Default" :
                        r.status === "partial" ? "Parcial" :
-                       r.open_for_financing ? "Aberto financ." : "Pendente"}
+                       r.open_for_financing ? "Aberto" : "Pendente"}
                     </Badge>
                   </td>
                   <td className="py-3 px-4 text-right">
