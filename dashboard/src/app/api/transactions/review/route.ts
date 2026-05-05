@@ -3,12 +3,42 @@ import { repository, isDemoMode } from "@/lib/data/repository";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/supabase/session";
 
+const VALID_CATEGORIES = new Set([
+  "revenue_shopify",
+  "revenue_other",
+  "cost_ads_meta",
+  "cost_ads_tiktok",
+  "cost_ads_google",
+  "cost_products",
+  "cost_shipping",
+  "cost_gateway",
+  "cost_chargebacks",
+  "cost_refunds",
+  "cost_team",
+  "cost_saas",
+  "cost_infra",
+  "cost_legal",
+  "cost_office",
+  "transfer_intercompany",
+  "transfer_interbank",
+  "transfer_fx",
+  "investment_scp_in",
+  "investment_scp_out",
+]);
+
 export async function POST(request: Request) {
   const body = await request.json();
   const { id, category_id, learn = true, apply_to_similar = true } = body;
 
   if (!id || !category_id) {
     return NextResponse.json({ error: "id e category_id obrigatorios" }, { status: 400 });
+  }
+
+  if (!VALID_CATEGORIES.has(category_id)) {
+    return NextResponse.json(
+      { error: `category_id invalido: ${category_id}` },
+      { status: 400 }
+    );
   }
 
   let reviewer = "admin";

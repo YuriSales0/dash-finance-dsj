@@ -47,6 +47,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Investidor nao encontrado" }, { status: 404 });
     }
 
+    // Validar que o invite_code pertence ao investidor logado (anti data leak/sequestro de convite)
+    if (invite_code) {
+      const { data: invite } = await sb
+        .from("invite_codes")
+        .select("used_by")
+        .eq("code", invite_code)
+        .single();
+      if (!invite || (invite as any).used_by !== (investor as any).id) {
+        return NextResponse.json(
+          { error: "Codigo de convite invalido para este investidor" },
+          { status: 403 }
+        );
+      }
+    }
+
     const now = new Date();
     const redemptionDate = new Date(now);
     redemptionDate.setDate(redemptionDate.getDate() + redemption_days);

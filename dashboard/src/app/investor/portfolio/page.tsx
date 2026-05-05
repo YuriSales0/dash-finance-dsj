@@ -1,13 +1,31 @@
-import { repository } from "@/lib/data/repository";
+import { repository, isDemoMode } from "@/lib/data/repository";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui/Badge";
 import { Wallet, TrendingUp, Clock, Calendar, FileText, Download } from "lucide-react";
+import { getSession } from "@/lib/supabase/session";
+import { createServerClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortfolioPage() {
+  // Resolver investor_id do investidor logado pra evitar vazar dados de outros
+  let investorId: number | undefined;
+  if (!isDemoMode) {
+    const session = await getSession();
+    if (!session || session.role !== "investor") redirect("/login");
+    const sb = createServerClient();
+    const { data: investor } = await sb
+      .from("investors")
+      .select("id")
+      .eq("auth_user_id", session.user.id)
+      .single();
+    if (!investor) redirect("/login");
+    investorId = (investor as any).id;
+  }
+
   const [financings, receivables] = await Promise.all([
-    repository.getFinancings(),
+    repository.getFinancings(investorId !== undefined ? { investor_id: investorId } : undefined),
     repository.getReceivables(),
   ]);
 
