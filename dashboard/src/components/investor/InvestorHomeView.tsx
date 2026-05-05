@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
-import { InvestorRevenueChart } from "@/components/dashboard/InvestorRevenueChart";
 import type { InvestorMetrics, MonthlyPnl, Receivable } from "@/types/database";
 
 interface Props {
@@ -36,11 +35,13 @@ interface Props {
 // dados do bookkeeping interno (Mercury/Airwallex/Revolut) que ainda
 // nao cobrem todo o historico operacional.
 //
-// 2025: $2.3M USD de receita consolidada (operacao plena nos 3 mercados).
-// 2026 offset: +$250K USD que ja foram capturados mas ainda nao constam
-//   no bookkeeping atual (CSVs ainda sendo importados).
+// 2025: receita consolidada acima de $2.3M USD (operacao plena nos 3
+//   mercados). Exibido como "Mais de $2,3 MI" pra deixar claro que
+//   nao e numero contabil exato — e marca historica.
+// 2026 offset: +$250K USD ja capturados mas ainda nao no bookkeeping.
 // Margens historicas: 20-35% (operacao e-commerce com produtos validados).
 const REVENUE_2025_USD = 2_300_000;
+const REVENUE_2025_LABEL = "Mais de $2,3 MI USD";
 const REVENUE_2026_OFFSET_USD = 250_000;
 const HISTORICAL_MARGIN_MIN_PCT = 20;
 const HISTORICAL_MARGIN_MAX_PCT = 35;
@@ -120,7 +121,7 @@ export function InvestorHomeView({
           icon={<TrendingUp size={18} />}
           color="green"
           label="Receita 2025"
-          value={formatCurrency(REVENUE_2025_USD)}
+          value={REVENUE_2025_LABEL}
           sub={`Operacao plena · ${HISTORICAL_MARGIN_MIN_PCT}-${HISTORICAL_MARGIN_MAX_PCT}% margem`}
         />
         <Metric
@@ -264,37 +265,33 @@ export function InvestorHomeView({
         </div>
       </div>
 
-      {/* Performance histórica */}
+      {/* Performance anual — sem grafico mensal pra evitar exposicao
+          de detalhes da operacao ao investidor. */}
       <div className="card">
-        <div className="card-header flex items-center justify-between">
+        <div className="card-header">
           <h3 className="font-semibold">Performance anual</h3>
-          <div className="flex gap-3 text-[11px] text-slate-500">
-            <span>
-              2025:{" "}
-              <strong className="text-slate-700">
-                {formatCurrency(REVENUE_2025_USD)}
-              </strong>
-            </span>
-            <span>
-              2026 (parcial):{" "}
-              <strong className="text-slate-700">
-                {formatCurrency(totalRevenue2026)}
-              </strong>
-            </span>
-            <span>
-              Margem:{" "}
-              <strong className="text-slate-700">
-                {HISTORICAL_MARGIN_MIN_PCT}-{HISTORICAL_MARGIN_MAX_PCT}%
-              </strong>
-            </span>
-          </div>
         </div>
         <div className="card-body">
-          <InvestorRevenueChart data={pnl12m} />
-          <p className="text-[10px] text-slate-400 mt-2 italic">
-            Receita consolidada das 3 empresas (USD-equivalente). 2025 baseline:{" "}
-            {formatCurrency(REVENUE_2025_USD)}. 2026 inclui {formatCurrency(REVENUE_2026_OFFSET_USD)} de
-            captacao recente ainda em conciliacao bancaria. Margem operacional historica entre{" "}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <YearBlock
+              year="2025"
+              value={REVENUE_2025_LABEL}
+              sub="Operacao plena nos 3 mercados"
+            />
+            <YearBlock
+              year="2026 (parcial)"
+              value={formatCurrency(totalRevenue2026)}
+              sub="Receita confirmada ate agora"
+            />
+            <YearBlock
+              year="Margem operacional"
+              value={`${HISTORICAL_MARGIN_MIN_PCT}-${HISTORICAL_MARGIN_MAX_PCT}%`}
+              sub="Faixa historica em produtos validados"
+            />
+          </div>
+          <p className="text-[10px] text-slate-400 mt-3 italic">
+            2026 inclui {formatCurrency(REVENUE_2026_OFFSET_USD)} de captacao recente ainda
+            em conciliacao bancaria. Margem operacional historica entre{" "}
             {HISTORICAL_MARGIN_MIN_PCT}% e {HISTORICAL_MARGIN_MAX_PCT}%.
           </p>
         </div>
@@ -511,6 +508,24 @@ function EntityCard({
         <span className="bg-white px-1.5 py-0.5 rounded">{currency}</span>
       </div>
       <p className="text-xs text-slate-600 leading-relaxed">{description}</p>
+    </div>
+  );
+}
+
+function YearBlock({
+  year,
+  value,
+  sub,
+}: {
+  year: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="bg-slate-50 rounded-lg p-4">
+      <p className="text-[11px] text-slate-500 uppercase tracking-wide font-medium">{year}</p>
+      <p className="text-xl font-bold text-slate-900 mt-1">{value}</p>
+      {sub && <p className="text-[10px] text-slate-500 mt-1">{sub}</p>}
     </div>
   );
 }
