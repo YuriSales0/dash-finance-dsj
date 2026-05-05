@@ -6,7 +6,8 @@ import type { Receivable } from "@/types/database";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
-import { Edit3, Loader2, X, Save, AlertTriangle, Trash2 } from "lucide-react";
+import { Edit3, Loader2, X, Save, AlertTriangle, Trash2, FlaskConical } from "lucide-react";
+import { isTestReceivable } from "@/lib/receivables/isTest";
 
 interface Props {
   receivables: Receivable[];
@@ -146,10 +147,25 @@ export function ReceivablesTable({ receivables }: Props) {
               <tr><td colSpan={8} className="text-center py-8 text-slate-400">Nenhum recebivel</td></tr>
             ) : receivables.map((r) => {
               const remaining = r.amount_total - r.amount_received;
+              const isTest = isTestReceivable(r);
               return (
-                <tr key={r.id} className="border-b border-slate-100">
+                <tr
+                  key={r.id}
+                  className={`border-b border-slate-100 ${isTest ? "bg-amber-50/40" : ""}`}
+                >
                   <td className="py-3 px-4">
-                    <div className="font-medium">{r.description}</div>
+                    <div className="font-medium flex items-center gap-2">
+                      {isTest && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold"
+                          title="Recebivel de teste — nao entra nas projecoes contabeis"
+                        >
+                          <FlaskConical size={10} />
+                          TEST
+                        </span>
+                      )}
+                      {r.description}
+                    </div>
                     <div className="text-xs text-slate-500">{r.counterparty}</div>
                   </td>
                   <td className="py-3 px-4 text-xs text-slate-600">{entityNames[r.entity_id]}</td>

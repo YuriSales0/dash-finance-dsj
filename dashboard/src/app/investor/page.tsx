@@ -1,14 +1,19 @@
 import { repository } from "@/lib/data/repository";
 import { InvestorHomeView } from "@/components/investor/InvestorHomeView";
+import { isTestReceivable } from "@/lib/receivables/isTest";
 
 export const dynamic = "force-dynamic";
 
 export default async function InvestorHome() {
-  const [metrics, pnl12m, allReceivables] = await Promise.all([
+  const [metrics, pnl12m, rawReceivables] = await Promise.all([
     repository.getInvestorMetrics(),
     repository.getMonthlyPnl({ entity_id: "consolidated", months: 12 }),
     repository.getReceivables(),
   ]);
+
+  // Filtra test data (seed do SCP) das projecoes contabeis. As ofertas
+  // de teste seguem visiveis em /investor/opportunities pra simulacao.
+  const allReceivables = rawReceivables.filter((r) => !isTestReceivable(r));
 
   const open = allReceivables.filter(
     (r) => r.open_for_financing && r.status !== "paid"

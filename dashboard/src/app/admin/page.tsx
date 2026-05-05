@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/Badge";
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, entityColors, entityNames } from "@/lib/format";
 import { generateOccurrences, bucketName } from "@/lib/debts/occurrences";
+import { isTestReceivable } from "@/lib/receivables/isTest";
 import type { DebtOccurrence } from "@/components/debts/TermCardWithDetails";
 import { AlertTriangle } from "lucide-react";
 
@@ -27,7 +28,7 @@ export default async function OverviewPage() {
     cashflowByCurrency24m,
     balanceCheck,
     allPendingTx,
-    receivables,
+    allReceivables,
     debts,
   ] = await Promise.all([
     repository.getBankAccounts(),
@@ -40,6 +41,11 @@ export default async function OverviewPage() {
     repository.getDebts(),
   ]);
   const pendingReviewCount = allPendingTx.length;
+
+  // Filtra recebiveis de teste (seed do SCP) — eles aparecem so em
+  // /admin/receivables e /admin/investments (com badge), nunca poluem
+  // as projecoes contabeis da Visao Geral.
+  const receivables = allReceivables.filter((r) => !isTestReceivable(r));
 
   const today = new Date();
   const receivablesOverdue = receivables.filter(
