@@ -293,7 +293,7 @@ export function InvestorHomeView({
                           Operacao #{r.id} ({r.currency})
                         </p>
                         <span className="text-[10px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">
-                          {r.financing_interest_rate_pct || 0}%
+                          {r.financing_interest_rate_pct || 0}%/mes
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 mb-2">

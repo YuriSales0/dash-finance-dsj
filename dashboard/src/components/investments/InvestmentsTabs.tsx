@@ -212,7 +212,7 @@ function InvestorsContent({
                     <div>
                       <p className="text-slate-500">Taxa</p>
                       <p className="font-semibold">
-                        {r.financing_interest_rate_pct || 0}% / periodo
+                        {r.financing_interest_rate_pct || 0}% ao mes
                       </p>
                     </div>
                     <div>

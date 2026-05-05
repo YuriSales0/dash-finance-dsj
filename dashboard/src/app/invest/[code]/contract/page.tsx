@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
+  calculateExpectedReturn,
+  effectivePeriodRatePct,
+} from "@/lib/finance/return";
+import {
   FileText,
   Check,
   Loader2,
@@ -110,9 +114,12 @@ export default function ContractPage() {
   }, [code, router]);
 
   const numAmount = Number(amount) || 0;
-  const rate = product?.interest_rate || 0;
+  const rate = product?.interest_rate || 0; // taxa MENSAL
   const days = product?.redemption_days || 0;
-  const expectedReturn = numAmount * (1 + rate / 100);
+  // Juros compostos por mes
+  const expectedReturn = calculateExpectedReturn(numAmount, rate, days);
+  const periodRate = effectivePeriodRatePct(rate, days);
+  const interest = expectedReturn - numAmount;
   const currency = product?.currency || "USD";
   const redemptionDate = new Date();
   redemptionDate.setDate(redemptionDate.getDate() + days);
@@ -237,6 +244,7 @@ export default function ContractPage() {
     amount: numAmount > 0 ? formatCurrency(numAmount, currency) : "[valor]",
     currency,
     interest_rate: String(rate),
+    period_rate: periodRate.toFixed(2),
     redemption_days: String(days),
     redemption_date: formatDate(redemptionDate.toISOString()),
     expected_return:
@@ -271,7 +279,9 @@ export default function ContractPage() {
                 #{product.receivable_id} ({product.currency})
               </Stat>
               <Stat label="Empresa emissora">{product.entity_name}</Stat>
-              <Stat label="Taxa">{product.interest_rate}% no periodo</Stat>
+              <Stat label="Taxa">
+                {product.interest_rate}% ao mes ({periodRate.toFixed(2)}% no periodo)
+              </Stat>
               <Stat label="Prazo">
                 {product.redemption_days} dias (resgate em {formatDate(redemptionDate.toISOString())})
               </Stat>
@@ -463,9 +473,11 @@ export default function ContractPage() {
                   <p className="font-bold text-lg">{formatCurrency(numAmount, currency)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500">Juros ({rate}%)</p>
+                  <p className="text-xs text-slate-500">
+                    Juros ({rate}%/mes · {periodRate.toFixed(2)}% no periodo)
+                  </p>
                   <p className="font-bold text-lg text-green-600">
-                    +{formatCurrency((numAmount * rate) / 100, currency)}
+                    +{formatCurrency(interest, currency)}
                   </p>
                 </div>
                 <div>
@@ -603,7 +615,8 @@ O Socio Investidor compromete-se a aportar **{{amount}}** ({{currency}}) na oper
 
 ## 2. CONDICOES DA OPERACAO
 
-- Taxa de juros: **{{interest_rate}}%** sobre o valor aportado, no periodo da operacao
+- Taxa de juros: **{{interest_rate}}% ao mes** sobre o valor aportado (juros compostos)
+- Taxa efetiva no periodo: **{{period_rate}}%**
 - Prazo: **{{redemption_days}}** dias a partir da assinatura
 - Data prevista de resgate: **{{redemption_date}}**
 - Vencimento do recebivel subjacente: **{{due_date}}**

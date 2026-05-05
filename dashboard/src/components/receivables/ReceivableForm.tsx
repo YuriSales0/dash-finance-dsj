@@ -149,8 +149,16 @@ export function ReceivableForm({ entities }: { entities: EntityOption[] }) {
 
           {form.open_for_financing && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-slate-50 rounded-lg">
-              <Field label="Taxa de juros (% no periodo)">
-                <input type="number" step="0.01" className="input" value={form.financing_interest_rate_pct} onChange={(e) => update("financing_interest_rate_pct", e.target.value)} required={form.open_for_financing} />
+              <Field label="Taxa de juros (% ao mes)">
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input"
+                  value={form.financing_interest_rate_pct}
+                  onChange={(e) => update("financing_interest_rate_pct", e.target.value)}
+                  required={form.open_for_financing}
+                  placeholder="Ex: 2 (= 2% ao mes, juros compostos)"
+                />
               </Field>
               <Field label="Periodo (dias para resgate)">
                 <input type="number" className="input" value={form.financing_redemption_days} onChange={(e) => update("financing_redemption_days", e.target.value)} required={form.open_for_financing} />

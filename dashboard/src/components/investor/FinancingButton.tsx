@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/format";
+import { calculateExpectedReturn, effectivePeriodRatePct } from "@/lib/finance/return";
 import { Loader2, CheckCircle } from "lucide-react";
 
 interface Props {
@@ -23,7 +24,9 @@ export function FinancingButton({ receivableId, minAmount, maxAmount, rate, days
   const [error, setError] = useState<string | null>(null);
 
   const numAmount = Number(amount) || 0;
-  const expectedReturn = numAmount * (1 + rate / 100);
+  // Taxa configurada e MENSAL — juros compostos no periodo
+  const expectedReturn = calculateExpectedReturn(numAmount, rate, days);
+  const periodRate = effectivePeriodRatePct(rate, days);
 
   async function handleSubmit() {
     setError(null);
@@ -95,6 +98,9 @@ export function FinancingButton({ receivableId, minAmount, maxAmount, rate, days
         <div className="text-sm text-slate-700">
           Retorno: <strong>{formatCurrency(expectedReturn, currency)}</strong>
           <span className="text-xs text-slate-500"> em {days}d</span>
+          <span className="block text-[10px] text-slate-400">
+            {rate}% ao mes · {periodRate.toFixed(2)}% no periodo (juros compostos)
+          </span>
         </div>
       </div>
 

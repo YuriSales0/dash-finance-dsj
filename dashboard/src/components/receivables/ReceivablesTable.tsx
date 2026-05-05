@@ -308,7 +308,7 @@ export function ReceivablesTable({ receivables }: Props) {
                 <div className="grid grid-cols-2 gap-3 mt-3 p-3 bg-slate-50 rounded-lg">
                   <div>
                     <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Taxa de juros (% no periodo)
+                      Taxa de juros (% ao mes)
                     </label>
                     <input
                       type="number"
@@ -318,7 +318,7 @@ export function ReceivablesTable({ receivables }: Props) {
                       onChange={(e) =>
                         setForm({ ...form, financing_interest_rate_pct: e.target.value })
                       }
-                      placeholder="Ex: 3"
+                      placeholder="Ex: 2 (juros compostos)"
                     />
                   </div>
                   <div>

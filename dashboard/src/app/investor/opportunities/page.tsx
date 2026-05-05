@@ -1,5 +1,6 @@
 import { repository } from "@/lib/data/repository";
 import { formatCurrency, formatDate, entityNames } from "@/lib/format";
+import { effectivePeriodRatePct } from "@/lib/finance/return";
 import { Calendar, TrendingUp, Clock } from "lucide-react";
 import { FinancingButton } from "@/components/investor/FinancingButton";
 
@@ -29,6 +30,10 @@ export default async function OpportunitiesPage() {
             const pct = ((r.financing_raised || 0) / r.amount_total) * 100;
             const daysToReceive = Math.round(
               (new Date(r.due_date).getTime() - new Date().getTime()) / 86400000
+            );
+            const periodRate = effectivePeriodRatePct(
+              r.financing_interest_rate_pct || 0,
+              r.financing_redemption_days || 0
             );
 
             return (
@@ -60,7 +65,11 @@ export default async function OpportunitiesPage() {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <Stat icon={<TrendingUp size={14} />} label="Taxa de juros">
-                      {r.financing_interest_rate_pct}% no periodo
+                      {r.financing_interest_rate_pct}% ao mes
+                      <br />
+                      <span className="text-[10px] text-slate-400">
+                        {periodRate.toFixed(2)}% no periodo (compostos)
+                      </span>
                     </Stat>
                     <Stat icon={<Clock size={14} />} label="Prazo">
                       {r.financing_redemption_days} dias

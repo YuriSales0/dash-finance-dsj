@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { isDemoMode } from "@/lib/data/repository";
 import { getSession } from "@/lib/supabase/session";
+import { calculateExpectedReturn } from "@/lib/finance/return";
 
 export async function POST(request: Request) {
   try {
@@ -101,9 +102,10 @@ export async function POST(request: Request) {
     }
 
     // C2: calcular expected_return server-side (NUNCA confiar no cliente)
+    // A taxa configurada no recebivel e MENSAL. Juros compostos por mes.
     const interestRatePct = Number(r.financing_interest_rate_pct || 0);
     const redemptionDays = Number(r.financing_redemption_days || 0);
-    const expectedReturn = Math.round(amount * (1 + interestRatePct / 100) * 100) / 100;
+    const expectedReturn = calculateExpectedReturn(amount, interestRatePct, redemptionDays);
 
     const now = new Date();
     const redemptionDate = new Date(now);
