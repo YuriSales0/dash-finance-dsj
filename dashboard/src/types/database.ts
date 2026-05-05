@@ -120,6 +120,11 @@ export interface MonthlyCashflow {
   count: number;
 }
 
+// Cashflow segmentado por moeda (pra visao por moeda)
+export interface MonthlyCashflowByCurrency extends MonthlyCashflow {
+  currency: string;
+}
+
 export interface Investor {
   id: number;
   name: string;

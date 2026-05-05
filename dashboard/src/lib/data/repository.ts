@@ -4,6 +4,7 @@ import type {
   Transaction,
   MonthlyPnl,
   MonthlyCashflow,
+  MonthlyCashflowByCurrency,
   Investor,
   Opportunity,
   Investment,
@@ -65,6 +66,7 @@ export interface Repository {
     months?: number;
   }): Promise<MonthlyPnl[]>;
   getMonthlyCashflow(months?: number): Promise<MonthlyCashflow[]>;
+  getMonthlyCashflowByCurrency(months?: number): Promise<MonthlyCashflowByCurrency[]>;
   getInvestors(): Promise<Investor[]>;
   getOpportunities(): Promise<Opportunity[]>;
   getInvestments(filters?: { investor_id?: number; opportunity_id?: number }): Promise<Investment[]>;
@@ -204,6 +206,10 @@ class MockRepository implements Repository {
   }
 
   async getMonthlyCashflow(_months?: number): Promise<MonthlyCashflow[]> {
+    return [];
+  }
+
+  async getMonthlyCashflowByCurrency(_months?: number): Promise<MonthlyCashflowByCurrency[]> {
     return [];
   }
 
@@ -582,6 +588,82 @@ class SupabaseRepository implements Repository {
     }
 
     return Object.values(buckets).sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  async getMonthlyCashflowByCurrency(months: number = 24): Promise<MonthlyCashflowByCurrency[]> {
+    // Mesma logica do getMonthlyCashflow mas agrupando tambem por currency_original
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffStr = cutoff.toISOString();
+
+    const all: Array<{
+      timestamp: string;
+      amount_original: number;
+      currency_original: string;
+      category_id: string | null;
+      is_intercompany: boolean;
+    }> = [];
+    const pageSize = 1000;
+    let page = 0;
+    while (true) {
+      const { data, error } = await this.db
+        .from("transactions")
+        .select("timestamp, amount_original, currency_original, category_id, is_intercompany")
+        .gte("timestamp", cutoffStr)
+        .order("timestamp", { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+      if (error) throw error;
+      const batch = (data || []) as any[];
+      all.push(...batch);
+      if (batch.length < pageSize) break;
+      page++;
+      if (page > 50) break;
+    }
+
+    // Agrupar por (mes, moeda)
+    const buckets: Record<string, MonthlyCashflowByCurrency> = {};
+    for (const t of all) {
+      const d = new Date(t.timestamp);
+      const monthKey = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+      const currency = t.currency_original || "UNKNOWN";
+      const key = `${monthKey}|${currency}`;
+      if (!buckets[key]) {
+        buckets[key] = {
+          month: monthKey,
+          currency,
+          cash_delta: 0,
+          revenue_flow: 0,
+          cost_flow: 0,
+          intercompany_flow: 0,
+          transfer_flow: 0,
+          uncategorized_flow: 0,
+          investment_flow: 0,
+          count: 0,
+        };
+      }
+      const b = buckets[key];
+      const amt = Number(t.amount_original || 0);
+      b.cash_delta += amt;
+      b.count++;
+
+      if (t.is_intercompany) {
+        b.intercompany_flow += amt;
+      } else if (!t.category_id) {
+        b.uncategorized_flow += amt;
+      } else if (t.category_id.startsWith("revenue")) {
+        b.revenue_flow += amt;
+      } else if (t.category_id.startsWith("cost")) {
+        b.cost_flow += amt;
+      } else if (t.category_id.startsWith("transfer")) {
+        b.transfer_flow += amt;
+      } else if (t.category_id.startsWith("investment")) {
+        b.investment_flow += amt;
+      }
+    }
+
+    return Object.values(buckets).sort((a, b) =>
+      a.month.localeCompare(b.month) || a.currency.localeCompare(b.currency)
+    );
   }
 
   async getInvestors(): Promise<Investor[]> {
