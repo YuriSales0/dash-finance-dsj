@@ -65,18 +65,21 @@ function Inner({ activeTab, investors, opportunities, investments, receivables, 
         />
       )}
       {tab === "invites" && (
-        <InviteGenerator
-          receivables={receivables
-            .filter((r) => r.open_for_financing && r.status !== "paid")
-            .map((r) => ({
-              id: r.id,
-              description: r.description,
-              amount_total: r.amount_total,
-              currency: r.currency,
-              interest_rate: r.financing_interest_rate_pct || 0,
-              redemption_days: r.financing_redemption_days || 0,
-            }))}
-        />
+        <div className="space-y-6">
+          <SeedTestFlowCard />
+          <InviteGenerator
+            receivables={receivables
+              .filter((r) => r.open_for_financing && r.status !== "paid")
+              .map((r) => ({
+                id: r.id,
+                description: r.description,
+                amount_total: r.amount_total,
+                currency: r.currency,
+                interest_rate: r.financing_interest_rate_pct || 0,
+                redemption_days: r.financing_redemption_days || 0,
+              }))}
+          />
+        </div>
       )}
       {tab === "preview" && (
         <PreviewContent
@@ -417,6 +420,130 @@ function PreviewContent({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SeedTestFlowCard() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function runSeed() {
+    if (!confirm("Cria um recebivel de teste + convite. Deseja continuar?")) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    const res = await fetch("/api/admin/seed-test-investor-flow", {
+      method: "POST",
+    });
+    setLoading(false);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || `Erro ${res.status}`);
+      return;
+    }
+    setResult(data);
+  }
+
+  function copy(text: string) {
+    navigator.clipboard?.writeText(text);
+  }
+
+  return (
+    <div className="card border-2 border-amber-200 bg-amber-50/30">
+      <div className="card-header bg-amber-50 border-amber-200">
+        <h3 className="font-semibold text-sm text-amber-900">
+          Criar fluxo de teste end-to-end
+        </h3>
+        <p className="text-xs text-amber-800 mt-0.5">
+          Provisiona um recebivel de teste + convite e devolve as URLs pra voce
+          percorrer todo o fluxo (registro → contrato → assinatura → hash).
+        </p>
+      </div>
+      <div className="card-body space-y-3">
+        {!result && (
+          <button
+            onClick={runSeed}
+            disabled={loading}
+            className="btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+          >
+            {loading ? "Criando..." : "Criar recebivel de teste + convite"}
+          </button>
+        )}
+        {error && (
+          <div className="bg-red-50 text-red-700 rounded p-2 text-xs">{error}</div>
+        )}
+        {result && (
+          <div className="space-y-3">
+            <div className="bg-white rounded p-3 border border-slate-200 space-y-2 text-xs">
+              <p className="text-slate-700">
+                <strong>Receivable ID:</strong> {result.receivable_id}
+              </p>
+              <p className="text-slate-700">
+                <strong>Invite code:</strong>{" "}
+                <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">
+                  {result.invite_code}
+                </code>
+              </p>
+              <UrlRow label="Convite (landing)" url={result.invite_url} onCopy={copy} />
+              <UrlRow label="Registro" url={result.register_url} onCopy={copy} />
+              <UrlRow label="Contrato (apos aprovado)" url={result.contract_url} onCopy={copy} />
+            </div>
+            {Array.isArray(result.next_steps) && (
+              <div className="bg-white rounded p-3 border border-slate-200">
+                <p className="text-xs font-semibold text-slate-700 mb-1.5">
+                  Proximos passos:
+                </p>
+                <ol className="text-xs text-slate-600 space-y-1 list-none">
+                  {result.next_steps.map((step: string, i: number) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            <button
+              onClick={() => setResult(null)}
+              className="text-xs text-slate-500 hover:text-slate-700 underline"
+            >
+              Criar outro
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UrlRow({
+  label,
+  url,
+  onCopy,
+}: {
+  label: string;
+  url: string;
+  onCopy: (text: string) => void;
+}) {
+  const fullUrl =
+    typeof window !== "undefined" ? `${window.location.origin}${url}` : url;
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-slate-500 shrink-0 w-32">{label}:</span>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-mono text-brand-600 hover:underline truncate flex-1"
+      >
+        {url}
+      </a>
+      <button
+        onClick={() => onCopy(fullUrl)}
+        className="text-[10px] text-slate-500 hover:text-slate-700 underline shrink-0"
+        title={`Copiar ${fullUrl}`}
+      >
+        copiar
+      </button>
     </div>
   );
 }
