@@ -98,6 +98,33 @@ export async function DELETE(request: Request) {
   try {
     const { id } = await request.json();
     if (!id) return NextResponse.json({ error: "ID obrigatorio" }, { status: 400 });
+
+    // H6: nao deletar recebivel com financings ativos — investidores ja
+    // assinaram contrato vinculado a essa operacao. Admin precisa primeiro
+    // resolver os financings (resgatar/cancelar) antes de deletar o recebivel.
+    if (!isDemoMode) {
+      try {
+        const sb = createServerClient();
+        const { data: actives, count } = await sb
+          .from("financings")
+          .select("id", { count: "exact", head: true })
+          .eq("receivable_id", id)
+          .in("status", ["active", "pending"]);
+        const n = (actives && (actives as any).length) || count || 0;
+        if (n > 0) {
+          return NextResponse.json(
+            {
+              error:
+                `Recebivel tem ${n} financiamento(s) ativo(s). Resgate ou cancele os financings antes de deletar.`,
+            },
+            { status: 409 }
+          );
+        }
+      } catch {
+        // se falhar a checagem, segue com a delete (best effort)
+      }
+    }
+
     await repository.deleteReceivable(id);
     return NextResponse.json({ ok: true });
   } catch (e: any) {

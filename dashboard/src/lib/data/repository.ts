@@ -33,11 +33,24 @@ import {
 
 // ============================================================
 // Repository: abstracao de dados
-// DEMO_MODE=true (default): usa mock data
-// DEMO_MODE=false: usa Supabase real
+// DEMO_MODE=true: forca mock data (mesmo que Supabase esteja configurado)
+// DEMO_MODE=false: forca Supabase real (falha se nao tiver config)
+// Sem DEMO_MODE setado: detecta automaticamente — se Supabase URL+KEY estao
+//   no env, usa real (production-safe); senao, usa mock (dev fallback).
+// H13: antes o default era TRUE — risco de prod entrar em demo se var faltasse.
 // ============================================================
 
-const DEMO_MODE = process.env.DEMO_MODE?.toLowerCase() !== "false";
+function detectDemoMode(): boolean {
+  const explicit = process.env.DEMO_MODE?.toLowerCase();
+  if (explicit === "true") return true;
+  if (explicit === "false") return false;
+  // Nao explicito — detecta pela presenca de Supabase
+  const supabaseConfigured = !!(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+  return !supabaseConfigured;
+}
+const DEMO_MODE = detectDemoMode();
 
 export interface Repository {
   // Empresas

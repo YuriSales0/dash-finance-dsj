@@ -127,8 +127,29 @@ function InvestorsContent({
   investments: any[];
   receivables: Receivable[];
 }) {
+  const router = useRouter();
+  const [actingId, setActingId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const approved = investors.filter((i) => i.status === "approved");
   const pending = investors.filter((i) => i.status === "pending");
+
+  async function decide(investorId: number, action: "approve" | "reject") {
+    if (action === "reject" && !confirm("Rejeitar este investidor? Nao podera mais entrar.")) return;
+    setActingId(investorId);
+    setActionError(null);
+    const res = await fetch(`/api/investors/${investorId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    setActingId(null);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: "Erro" }));
+      setActionError(data.error || `Erro ${res.status}`);
+      return;
+    }
+    router.refresh();
+  }
   const openReceivables = receivables.filter(
     (r) => r.open_for_financing && r.status !== "paid"
   );
@@ -246,21 +267,39 @@ function InvestorsContent({
             <Badge variant="warning">{pending.length}</Badge>
           </div>
           <div className="card-body space-y-3">
-            {pending.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
-                <div>
-                  <p className="font-medium">{inv.name}</p>
-                  <p className="text-sm text-slate-500">{inv.cpf} - {inv.email} - {inv.phone}</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Codigo: {inv.invite_code} - Criado em {formatDate(inv.created_at)}
-                  </p>
+            {actionError && (
+              <div className="bg-red-50 text-red-700 rounded p-2 text-xs">{actionError}</div>
+            )}
+            {pending.map((inv) => {
+              const acting = actingId === inv.id;
+              return (
+                <div key={inv.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{inv.name}</p>
+                    <p className="text-sm text-slate-500">{inv.cpf} - {inv.email} - {inv.phone}</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Codigo: {inv.invite_code} - Criado em {formatDate(inv.created_at)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => decide(inv.id, "reject")}
+                      disabled={acting}
+                      className="btn-secondary text-sm disabled:opacity-50"
+                    >
+                      {acting ? "..." : "Rejeitar"}
+                    </button>
+                    <button
+                      onClick={() => decide(inv.id, "approve")}
+                      disabled={acting}
+                      className="btn-primary text-sm disabled:opacity-50"
+                    >
+                      {acting ? "..." : "Aprovar"}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button className="btn-secondary text-sm">Rejeitar</button>
-                  <button className="btn-primary text-sm">Aprovar</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

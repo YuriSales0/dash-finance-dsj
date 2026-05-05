@@ -169,6 +169,18 @@ export async function POST(request: Request) {
           { status: 409 }
         );
       }
+      // H10: ao bater 100%, fechar o recebivel pra novas captacoes
+      // (saiu da lista de oportunidades; admin ainda ve em /admin/receivables).
+      if (newRaised >= total - 0.005) {
+        try {
+          await sb
+            .from("receivables")
+            .update({ open_for_financing: false })
+            .eq("id", receivable_id);
+        } catch {
+          // nao critico
+        }
+      }
     }
 
     // Criar cronograma de pagamento (parcela unica)

@@ -15,17 +15,45 @@ export default function ContractPage() {
   const [contractTemplate, setContractTemplate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
+    // H8: validar que ha sessao de investidor APROVADO antes de mostrar UI.
+    // /api/invites/product retorna 401/403 se nao autenticado ou nao aprovado.
     fetch(`/api/invites/product?code=${code}`)
-      .then((r) => r.json())
-      .then((data) => setProduct(data))
-      .catch(() => {});
+      .then(async (r) => {
+        if (r.status === 401) {
+          // Nao autenticado — manda pra /register pra fazer KYC primeiro
+          router.replace(`/invest/${code}/register`);
+          return null;
+        }
+        if (r.status === 403) {
+          setError(
+            "Cadastro pendente de aprovacao. Aguarde a equipe DSJ aprovar antes de assinar contratos."
+          );
+          setAuthChecked(true);
+          return null;
+        }
+        if (!r.ok) {
+          setError("Convite invalido ou expirado");
+          setAuthChecked(true);
+          return null;
+        }
+        const data = await r.json();
+        setProduct(data);
+        setIsAuthorized(true);
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        setError("Erro de conexao");
+        setAuthChecked(true);
+      });
     fetch("/api/settings?key=contract_template")
       .then((r) => r.json())
       .then((d) => setContractTemplate(d.value || ""))
       .catch(() => {});
-  }, [code]);
+  }, [code, router]);
 
   const numAmount = Number(amount) || 0;
   const rate = product?.interest_rate || 2.5;
@@ -56,6 +84,28 @@ export default function ContractPage() {
 
     setSuccess(true);
     setTimeout(() => router.push("/investor"), 3000);
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <Loader2 className="animate-spin text-slate-400" size={32} />
+      </div>
+    );
+  }
+
+  if (authChecked && !isAuthorized) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="card card-body max-w-md text-center py-12">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="text-amber-600" size={32} />
+          </div>
+          <h1 className="text-xl font-bold mb-2">Acesso nao autorizado</h1>
+          <p className="text-sm text-slate-600">{error || "Voce nao pode assinar contratos no momento."}</p>
+        </div>
+      </div>
+    );
   }
 
   if (success) {
