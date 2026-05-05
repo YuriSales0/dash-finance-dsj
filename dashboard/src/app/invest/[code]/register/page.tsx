@@ -28,9 +28,28 @@ export default function RegisterPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  // Validacao step 2: tem que ter PIX OU (banco + agencia + conta) preenchidos.
+  // Telefone tambem e obrigatorio (entra no contrato).
+  const bankComplete = !!(
+    (form.bank_name && form.bank_agency && form.bank_account) || form.pix_key
+  );
+  const step2Valid = !!form.phone && bankComplete;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (!form.phone) {
+      setError("Telefone e obrigatorio (sera usado no contrato).");
+      return;
+    }
+    if (!bankComplete) {
+      setError(
+        "Cadastre PIX OU dados bancarios completos (banco + agencia + conta). E pra onde a DSJ envia seu retorno."
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -98,43 +117,114 @@ export default function RegisterPage() {
                 <Field label="Email">
                   <input type="email" className="input" value={form.email} onChange={(e) => update("email", e.target.value)} required placeholder="seu@email.com" />
                 </Field>
-                <Field label="Telefone">
-                  <input className="input" value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="+55 11 99999-0000" />
+                <Field label="Telefone *">
+                  <input
+                    className="input"
+                    value={form.phone}
+                    onChange={(e) => update("phone", e.target.value)}
+                    required
+                    placeholder="+55 11 99999-0000"
+                  />
                 </Field>
                 <Field label="Senha">
                   <input type="password" className="input" value={form.password} onChange={(e) => update("password", e.target.value)} required minLength={8} placeholder="Minimo 8 caracteres" />
                 </Field>
-                <button type="button" onClick={() => setStep(2)} className="btn-primary w-full" disabled={!form.name || !form.email || !form.password || !form.cpf}>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="btn-primary w-full disabled:opacity-50"
+                  disabled={
+                    !form.name ||
+                    !form.email ||
+                    !form.password ||
+                    !form.cpf ||
+                    !form.phone
+                  }
+                >
                   Proximo: dados bancarios
                 </button>
+                <p className="text-[10px] text-slate-400 text-center">
+                  * todos os campos do passo 1 sao obrigatorios — entram no contrato.
+                </p>
               </>
             )}
 
             {step === 2 && (
               <>
-                <h3 className="font-semibold text-sm text-slate-700">Dados bancarios (para receber retorno)</h3>
+                <h3 className="font-semibold text-sm text-slate-700">
+                  Dados bancarios (para receber retorno)
+                </h3>
+                <p className="text-xs text-slate-500 -mt-2">
+                  Cadastre <strong>PIX</strong> OU{" "}
+                  <strong>banco + agencia + conta</strong> (qualquer um dos dois e
+                  obrigatorio — entra no contrato).
+                </p>
+
+                <Field label="Chave PIX">
+                  <input
+                    className="input"
+                    value={form.pix_key}
+                    onChange={(e) => update("pix_key", e.target.value)}
+                    placeholder="CPF, email, telefone ou chave aleatoria"
+                  />
+                </Field>
+
+                <div className="text-center text-xs text-slate-400 my-1">— OU —</div>
+
                 <Field label="Banco">
-                  <input className="input" value={form.bank_name} onChange={(e) => update("bank_name", e.target.value)} placeholder="Ex: Nubank, Itau, Bradesco" />
+                  <input
+                    className="input"
+                    value={form.bank_name}
+                    onChange={(e) => update("bank_name", e.target.value)}
+                    placeholder="Ex: Nubank, Itau, Bradesco"
+                  />
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Agencia">
-                    <input className="input" value={form.bank_agency} onChange={(e) => update("bank_agency", e.target.value)} placeholder="0001" />
+                    <input
+                      className="input"
+                      value={form.bank_agency}
+                      onChange={(e) => update("bank_agency", e.target.value)}
+                      placeholder="0001"
+                    />
                   </Field>
                   <Field label="Conta">
-                    <input className="input" value={form.bank_account} onChange={(e) => update("bank_account", e.target.value)} placeholder="12345-6" />
+                    <input
+                      className="input"
+                      value={form.bank_account}
+                      onChange={(e) => update("bank_account", e.target.value)}
+                      placeholder="12345-6"
+                    />
                   </Field>
                 </div>
-                <Field label="Chave PIX">
-                  <input className="input" value={form.pix_key} onChange={(e) => update("pix_key", e.target.value)} placeholder="CPF, email, telefone ou chave aleatoria" />
-                </Field>
+
+                <div
+                  className={`p-2 rounded text-xs ${
+                    bankComplete
+                      ? "bg-green-50 text-green-800"
+                      : "bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  {bankComplete
+                    ? "✓ Dados bancarios completos."
+                    : "Informe PIX ou banco+agencia+conta para prosseguir."}
+                </div>
 
                 {error && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    {error}
+                  </div>
                 )}
 
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setStep(1)} className="btn-secondary flex-1">Voltar</button>
-                  <button type="submit" disabled={loading} className="btn-primary flex-1 inline-flex items-center justify-center gap-2">
+                  <button type="button" onClick={() => setStep(1)} className="btn-secondary flex-1">
+                    Voltar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading || !step2Valid}
+                    className="btn-primary flex-1 inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
                     {loading && <Loader2 size={16} className="animate-spin" />}
                     {loading ? "Criando..." : "Criar conta"}
                   </button>

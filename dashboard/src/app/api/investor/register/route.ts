@@ -8,7 +8,28 @@ export async function POST(request: Request) {
     const { name, email, cpf, phone, password, bank_name, bank_agency, bank_account, pix_key, invite_code } = body;
 
     if (!name || !email || !cpf || !password || !invite_code) {
-      return NextResponse.json({ error: "Campos obrigatorios: nome, email, CPF, senha, codigo" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Campos obrigatorios: nome, email, CPF, senha, codigo" },
+        { status: 400 }
+      );
+    }
+    // Telefone obrigatorio (entra no contrato)
+    if (!phone) {
+      return NextResponse.json(
+        { error: "Telefone e obrigatorio (sera usado no contrato)." },
+        { status: 400 }
+      );
+    }
+    // Pelo menos PIX OU dados bancarios completos (banco + agencia + conta)
+    const bankComplete = !!(bank_name && bank_agency && bank_account);
+    if (!pix_key && !bankComplete) {
+      return NextResponse.json(
+        {
+          error:
+            "Informe PIX ou banco completo (banco + agencia + conta). E pra onde a DSJ envia seu retorno.",
+        },
+        { status: 400 }
+      );
     }
 
     if (isDemoMode) {

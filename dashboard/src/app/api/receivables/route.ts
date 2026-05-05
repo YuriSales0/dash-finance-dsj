@@ -15,6 +15,11 @@ function invalidateReceivablePaths() {
   revalidatePath("/investor");
   revalidatePath("/investor/opportunities");
   revalidatePath("/investor/portfolio");
+  // /invest/[code] e suas sub-rotas (landing publica + contract + register)
+  // dependem de receivable. revalidate by 'layout' invalida toda a arvore.
+  revalidatePath("/invest/[code]", "layout");
+  // /api/invites/product tambem cacheia o GET
+  revalidatePath("/api/invites/product");
 }
 
 export async function POST(request: Request) {
