@@ -113,7 +113,7 @@ export function InvestorHomeView({
             juros no prazo combinado.
           </p>
           <div className="flex gap-3 mt-6 flex-wrap text-xs">
-            <Pill icon={<Globe size={11} />}>3 empresas · 4 moedas</Pill>
+            <Pill icon={<Globe size={11} />}>5 entidades · 4 jurisdicoes</Pill>
             <Pill icon={<TrendingUp size={11} />}>
               {formatCurrency(totalRevenueAllTime)} de receita acumulada
             </Pill>
@@ -171,8 +171,12 @@ export function InvestorHomeView({
             <Building2 size={16} className="text-brand-600" />
             Sobre a operacao
           </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            5 entidades juridicas em 4 jurisdicoes — cada uma cobre uma regiao ou
+            funcao especifica da operacao multi-mercado.
+          </p>
         </div>
-        <div className="card-body grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="card-body grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <EntityCard
             name="DSJ Network LLC"
             jurisdiction="Florida, USA"
@@ -190,6 +194,18 @@ export function InvestorHomeView({
             jurisdiction="Delaware, USA"
             currency="USD"
             description="Estrutura de suporte. Conta Mercury para flexibilidade operacional."
+          />
+          <EntityCard
+            name="DSJ Commerce LTDA"
+            jurisdiction="Brasil"
+            currency="BRL"
+            description="Estrutura brasileira para operacoes em real, parcerias locais e captacao via investidor SCP. Recebe aportes em BRL e canaliza pra estrutura internacional conforme demanda."
+          />
+          <EntityCard
+            name="DSJ Asia"
+            jurisdiction="Hong Kong"
+            currency="USD / HKD / CNY"
+            description="Entidade juridica em Hong Kong para comercio com processadores asiaticos. Permite contratacao direta de fornecedores e gateways de pagamento na regiao, reduzindo custo e prazo na cadeia."
           />
         </div>
       </div>

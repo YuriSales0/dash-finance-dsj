@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { isDemoMode, repository } from "@/lib/data/repository";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { calculateExpectedReturn, effectivePeriodRatePct } from "@/lib/finance/return";
 import Link from "next/link";
 import { ShieldCheck, TrendingUp, Calendar, Clock, ArrowRight } from "lucide-react";
 import type { Metadata } from "next";
@@ -108,7 +109,7 @@ export default async function InviteLandingPage({
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <ProductStat icon={<TrendingUp size={16} />} label="Taxa de juros">
-                  {receivable.financing_interest_rate_pct}%
+                  {receivable.financing_interest_rate_pct}% ao mes
                 </ProductStat>
                 <ProductStat icon={<Clock size={16} />} label="Prazo">
                   {receivable.financing_redemption_days} dias
@@ -121,19 +122,27 @@ export default async function InviteLandingPage({
                 </ProductStat>
               </div>
 
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-green-900">
-                  <strong>Exemplo:</strong> Investindo {formatCurrency(receivable.financing_min_amount || 1000, receivable.currency)},
-                  voce recebe{" "}
-                  <strong>
-                    {formatCurrency(
-                      (receivable.financing_min_amount || 1000) * (1 + (receivable.financing_interest_rate_pct || 0) / 100),
-                      receivable.currency
-                    )}
-                  </strong>{" "}
-                  em {receivable.financing_redemption_days} dias.
-                </p>
-              </div>
+              {(() => {
+                const exampleAmount = receivable.financing_min_amount || 1000;
+                const rate = receivable.financing_interest_rate_pct || 0;
+                const days = receivable.financing_redemption_days || 0;
+                const exampleReturn = calculateExpectedReturn(exampleAmount, rate, days);
+                const periodRate = effectivePeriodRatePct(rate, days);
+                return (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-green-900">
+                      <strong>Exemplo:</strong> Investindo{" "}
+                      {formatCurrency(exampleAmount, receivable.currency)}, voce recebe{" "}
+                      <strong>{formatCurrency(exampleReturn, receivable.currency)}</strong>{" "}
+                      em {days} dias.
+                    </p>
+                    <p className="text-xs text-green-700 mt-1">
+                      Taxa de {rate}% ao mes (juros compostos) ={" "}
+                      {periodRate.toFixed(2)}% no periodo.
+                    </p>
+                  </div>
+                );
+              })()}
 
               <Link
                 href={`/invest/${code}/register`}
