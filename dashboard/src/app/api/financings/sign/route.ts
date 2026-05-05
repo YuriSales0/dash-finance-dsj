@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { isDemoMode } from "@/lib/data/repository";
 import { getSession } from "@/lib/supabase/session";
@@ -205,6 +206,14 @@ export async function POST(request: Request) {
     } catch {
       // nao critico
     }
+
+    // Invalidar paths que dependem de financings/receivables
+    revalidatePath("/admin");
+    revalidatePath("/admin/investments");
+    revalidatePath("/admin/receivables");
+    revalidatePath("/investor");
+    revalidatePath("/investor/opportunities");
+    revalidatePath("/investor/portfolio");
 
     return NextResponse.json(financing);
   } catch (e: any) {

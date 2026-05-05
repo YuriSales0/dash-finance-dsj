@@ -1,11 +1,27 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { repository, isDemoMode } from "@/lib/data/repository";
 import { createServerClient } from "@/lib/supabase/server";
+
+// Invalida o data cache do Next pra todas as paginas que dependem de
+// recebiveis — caso contrario, edicoes em /admin/receivables nao
+// aparecem em /admin/investments, /investor/opportunities, etc.
+function invalidateReceivablePaths() {
+  revalidatePath("/admin");
+  revalidatePath("/admin/receivables");
+  revalidatePath("/admin/investments");
+  revalidatePath("/admin/debts");
+  revalidatePath("/admin/pnl");
+  revalidatePath("/investor");
+  revalidatePath("/investor/opportunities");
+  revalidatePath("/investor/portfolio");
+}
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const created = await repository.createReceivable(body);
+    invalidateReceivablePaths();
     return NextResponse.json(created);
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
@@ -88,6 +104,7 @@ export async function PATCH(request: Request) {
     }
 
     await repository.updateReceivable(id, data);
+    invalidateReceivablePaths();
     return NextResponse.json({ ok: true, transaction_created: transactionCreated, credited: creditedAmount });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
@@ -126,6 +143,7 @@ export async function DELETE(request: Request) {
     }
 
     await repository.deleteReceivable(id);
+    invalidateReceivablePaths();
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });

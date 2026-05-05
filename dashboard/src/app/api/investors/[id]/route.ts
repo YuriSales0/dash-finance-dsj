@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { isDemoMode } from "@/lib/data/repository";
 import { getSession } from "@/lib/supabase/session";
@@ -61,6 +62,7 @@ export async function PATCH(
       }
     }
 
+    revalidatePath("/admin/investments");
     return NextResponse.json({ ok: true, status: newStatus });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });

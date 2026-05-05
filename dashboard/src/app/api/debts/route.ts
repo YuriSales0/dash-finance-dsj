@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { repository, isDemoMode } from "@/lib/data/repository";
 import { createServerClient } from "@/lib/supabase/server";
+
+function invalidateDebtPaths() {
+  revalidatePath("/admin");
+  revalidatePath("/admin/debts");
+  revalidatePath("/admin/pnl");
+}
 
 export async function POST(request: Request) {
   try {
@@ -56,6 +63,7 @@ export async function POST(request: Request) {
             needs_review: false,
           });
 
+          invalidateDebtPaths();
           return NextResponse.json({
             ...created,
             balance_credited: true,
@@ -69,6 +77,7 @@ export async function POST(request: Request) {
       }
     }
 
+    invalidateDebtPaths();
     return NextResponse.json(created);
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
@@ -140,6 +149,7 @@ export async function PATCH(request: Request) {
     }
 
     await repository.updateDebt(id, data);
+    invalidateDebtPaths();
     return NextResponse.json({ ok: true, tx_adjusted: txAdjusted, balance_delta: balanceDelta });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
@@ -201,6 +211,7 @@ export async function DELETE(request: Request) {
     }
 
     await repository.deleteDebt(id);
+    invalidateDebtPaths();
     return NextResponse.json({ ok: true, reversed_tx: reversedTx, balance_adjusted: balanceAdjusted });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
