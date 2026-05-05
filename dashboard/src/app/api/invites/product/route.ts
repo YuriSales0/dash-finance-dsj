@@ -76,15 +76,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Recebivel nao encontrado" }, { status: 404 });
   }
 
+  // Buscar nome publico da empresa emissora pra usar no contrato
+  const { data: entity } = await sb
+    .from("entities")
+    .select("name")
+    .eq("id", (recv as any).entity_id)
+    .single();
+
   return NextResponse.json({
     receivable_id: (recv as any).id,
     // description e counterparty NAO retornados — investidor nao precisa ver
     // dados sensiveis (cliente DSJ) na pagina de contrato.
     currency: (recv as any).currency,
+    amount_total: (recv as any).amount_total,
     interest_rate: (recv as any).financing_interest_rate_pct,
     redemption_days: (recv as any).financing_redemption_days,
     min_amount: (recv as any).financing_min_amount,
     max_amount: (recv as any).financing_max_amount,
     financing_terms: (recv as any).financing_terms,
+    due_date: (recv as any).due_date,
+    entity_id: (recv as any).entity_id,
+    entity_name: (entity as any)?.name || (recv as any).entity_id,
   });
 }
