@@ -119,15 +119,27 @@ export default async function OverviewPage() {
     });
   }
 
+  // Pra projecao de fluxo de caixa, considerar SOMENTE dividas nao-operacionais
+  // (emprestimos, aportes de investidor, outros, sem categoria). Custos operacionais
+  // (cost_*) sao pagos pela receita corrente — incluir na projecao seria enganoso
+  // ja que o lado da receita futura (vendas) nao esta nos recebiveis.
+  function isCapitalDebt(o: DebtOccurrence): boolean {
+    if (!o.category) return true; // sem categoria = inclui (conservador)
+    if (o.category.startsWith("cost_")) return false;
+    return true; // emprestimo, aporte_investidor, outros, etc.
+  }
+  const immediateCapitalOccurrences = immediateOccurrences.filter(isCapitalDebt);
+  const mediumCapitalOccurrences = mediumDebtOccurrences.filter(isCapitalDebt);
+
   const projectionShort = {
     label: "Curto prazo",
     sublabel: "atrasadas + ≤ 35 dias",
-    byCurrency: groupByCurrency(shortReceivables, immediateOccurrences),
+    byCurrency: groupByCurrency(shortReceivables, immediateCapitalOccurrences),
   };
   const projectionMedium = {
     label: "Medio prazo",
     sublabel: "36 a 150 dias",
-    byCurrency: groupByCurrency(mediumReceivables, mediumDebtOccurrences),
+    byCurrency: groupByCurrency(mediumReceivables, mediumCapitalOccurrences),
   };
 
   // Ultima atualizacao

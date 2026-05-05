@@ -45,7 +45,12 @@ export function CashflowProjectionCard({ curto, medio }: Props) {
       <div className="card-header">
         <h3 className="font-semibold text-sm">Projecao de Fluxo de Caixa por Prazo</h3>
         <p className="text-xs text-slate-500 mt-0.5">
-          Entradas (recebiveis) - Saidas (dividas) por moeda. Clique nos valores pra detalhar.
+          Entradas (recebiveis) - Saidas (dividas de capital) por moeda. Clique nos valores pra detalhar.
+        </p>
+        <p className="text-[10px] text-slate-400 mt-1 italic">
+          Saidas incluem apenas emprestimos, aportes de investidor (juros/balloon) e outros
+          compromissos de capital. Custos operacionais recorrentes (salarios, ads, SaaS, frete,
+          etc.) ficam de fora — sao pagos pela receita corrente que ainda nao esta nos recebiveis.
         </p>
       </div>
       <div className="card-body space-y-4">

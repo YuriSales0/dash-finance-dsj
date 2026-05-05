@@ -43,6 +43,7 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
     description: d.description,
     creditor: d.creditor,
     entity_id: d.entity_id,
+    category: d.category,
     currency: d.currency,
     amount_paid: d.amount_paid,
     amount_total: d.amount_total,

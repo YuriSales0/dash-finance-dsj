@@ -10,6 +10,7 @@ export interface DebtOccurrence {
   description: string;
   creditor: string | null;
   entity_id: string;
+  category: string | null;           // categoria da divida (emprestimo, aporte_investidor, cost_team, etc)
   amount: number;        // saldo restante DESTA ocorrencia (per_occurrence - partial_paid_on_this)
   currency: string;
   payment_date: string;
