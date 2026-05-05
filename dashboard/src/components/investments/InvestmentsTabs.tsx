@@ -442,8 +442,11 @@ function PreviewContent({
 }
 
 function SeedTestFlowCard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [cleanupResult, setCleanupResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function runSeed() {
@@ -451,6 +454,7 @@ function SeedTestFlowCard() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setCleanupResult(null);
     const res = await fetch("/api/admin/seed-test-investor-flow", {
       method: "POST",
     });
@@ -461,6 +465,28 @@ function SeedTestFlowCard() {
       return;
     }
     setResult(data);
+  }
+
+  async function cleanup() {
+    if (
+      !confirm(
+        "Excluir TODOS os recebiveis de teste + financings + convites vinculados. Acao irreversivel. Continuar?"
+      )
+    )
+      return;
+    setCleaning(true);
+    setError(null);
+    setCleanupResult(null);
+    const res = await fetch("/api/admin/cleanup-test-data", { method: "POST" });
+    setCleaning(false);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || `Erro ${res.status}`);
+      return;
+    }
+    setCleanupResult(data);
+    setResult(null);
+    router.refresh();
   }
 
   function copy(text: string) {
@@ -480,16 +506,34 @@ function SeedTestFlowCard() {
       </div>
       <div className="card-body space-y-3">
         {!result && (
-          <button
-            onClick={runSeed}
-            disabled={loading}
-            className="btn-primary inline-flex items-center gap-2 disabled:opacity-50"
-          >
-            {loading ? "Criando..." : "Criar recebivel de teste + convite"}
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={runSeed}
+              disabled={loading || cleaning}
+              className="btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+            >
+              {loading ? "Criando..." : "Criar recebivel de teste + convite"}
+            </button>
+            <button
+              onClick={cleanup}
+              disabled={loading || cleaning}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+              title="Remove TODOS os recebiveis de teste + financings + invites vinculados"
+            >
+              {cleaning ? "Limpando..." : "Excluir todos os tests"}
+            </button>
+          </div>
         )}
         {error && (
           <div className="bg-red-50 text-red-700 rounded p-2 text-xs">{error}</div>
+        )}
+        {cleanupResult && (
+          <div className="bg-green-50 border border-green-200 text-green-800 rounded p-3 text-xs">
+            Limpeza concluida:{" "}
+            <strong>{cleanupResult.deleted_receivables}</strong> recebivel(is) ·{" "}
+            <strong>{cleanupResult.deleted_financings}</strong> financiamento(s) ·{" "}
+            <strong>{cleanupResult.deleted_invites}</strong> convite(s) excluidos.
+          </div>
         )}
         {result && (
           <div className="space-y-3">
