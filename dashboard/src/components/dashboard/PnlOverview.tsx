@@ -18,14 +18,13 @@ const MONTH_NAMES = [
   "Jul", "Ago", "Set", "Out", "Nov", "Dez",
 ];
 
-// Ordem preferida das moedas (mais relevantes primeiro)
 const CURRENCY_ORDER = ["USD", "GBP", "EUR", "BRL"];
 
 // new Date("2026-01-01") em UTC-3 vira 31/dez/2025 23:00 local → getMonth()=11.
 // Parsear YYYY-MM-DD como local date evita o shift de timezone.
 function parseLocalDate(dateStr: string): { year: number; month: number } {
   const [y, m] = dateStr.split("-").map(Number);
-  return { year: y, month: m - 1 }; // month 0-indexed
+  return { year: y, month: m - 1 };
 }
 
 interface PnlOverviewProps {
@@ -34,16 +33,32 @@ interface PnlOverviewProps {
   cashflowByCurrency?: MonthlyCashflowByCurrency[];
 }
 
-interface CurrencyTotals {
-  currency: string;
+interface MonthRow {
+  month: string;
   revenue: number;
   costs: number;
   profit: number;
-  margin: number;
-  intercompany_flow: number;
   transfer_flow: number;
-  uncategorized_flow: number;
+  intercompany_flow: number;
   investment_flow: number;
+  uncategorized_flow: number;
+  cash_delta: number;
+}
+
+interface CurrencyData {
+  currency: string;
+  totals: {
+    revenue: number;
+    costs: number;
+    profit: number;
+    margin: number;
+    transfer_flow: number;
+    intercompany_flow: number;
+    investment_flow: number;
+    uncategorized_flow: number;
+    cash_delta: number;
+  };
+  monthly: MonthRow[];
 }
 
 export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: PnlOverviewProps) {
@@ -76,36 +91,55 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
     });
   }, [cashflowByCurrency, selectedYear, selectedMonth]);
 
-  // Agrupar por moeda (Receita / Despesa / Lucro / Reconciliacao)
-  const byCurrency = useMemo<CurrencyTotals[]>(() => {
-    const map: Record<string, CurrencyTotals> = {};
+  // Agrupar por moeda + manter linhas mensais
+  const byCurrency = useMemo<CurrencyData[]>(() => {
+    const map: Record<string, CurrencyData> = {};
     for (const c of filteredByCurrency) {
       const cur = c.currency || "UNKNOWN";
       if (!map[cur]) {
         map[cur] = {
           currency: cur,
-          revenue: 0,
-          costs: 0,
-          profit: 0,
-          margin: 0,
-          intercompany_flow: 0,
-          transfer_flow: 0,
-          uncategorized_flow: 0,
-          investment_flow: 0,
+          totals: {
+            revenue: 0,
+            costs: 0,
+            profit: 0,
+            margin: 0,
+            transfer_flow: 0,
+            intercompany_flow: 0,
+            investment_flow: 0,
+            uncategorized_flow: 0,
+            cash_delta: 0,
+          },
+          monthly: [],
         };
       }
-      const t = map[cur];
-      t.revenue += c.revenue_flow;
-      // cost_flow vem negativo — convertemos pra positivo no campo costs
-      t.costs += -c.cost_flow;
-      t.intercompany_flow += c.intercompany_flow;
-      t.transfer_flow += c.transfer_flow;
-      t.uncategorized_flow += c.uncategorized_flow;
-      t.investment_flow += c.investment_flow;
+      const x = map[cur];
+      const revenue = c.revenue_flow;
+      const costs = -c.cost_flow; // cost_flow vem negativo
+      const profit = revenue - costs;
+      x.totals.revenue += revenue;
+      x.totals.costs += costs;
+      x.totals.transfer_flow += c.transfer_flow;
+      x.totals.intercompany_flow += c.intercompany_flow;
+      x.totals.investment_flow += c.investment_flow;
+      x.totals.uncategorized_flow += c.uncategorized_flow;
+      x.totals.cash_delta += c.cash_delta;
+      x.monthly.push({
+        month: c.month,
+        revenue,
+        costs,
+        profit,
+        transfer_flow: c.transfer_flow,
+        intercompany_flow: c.intercompany_flow,
+        investment_flow: c.investment_flow,
+        uncategorized_flow: c.uncategorized_flow,
+        cash_delta: c.cash_delta,
+      });
     }
-    for (const t of Object.values(map)) {
-      t.profit = t.revenue - t.costs;
-      t.margin = t.revenue > 0 ? (t.profit / t.revenue) * 100 : 0;
+    for (const x of Object.values(map)) {
+      x.totals.profit = x.totals.revenue - x.totals.costs;
+      x.totals.margin = x.totals.revenue > 0 ? (x.totals.profit / x.totals.revenue) * 100 : 0;
+      x.monthly.sort((a, b) => a.month.localeCompare(b.month));
     }
     return Object.values(map).sort((a, b) => {
       const ai = CURRENCY_ORDER.indexOf(a.currency);
@@ -117,7 +151,6 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
     });
   }, [filteredByCurrency]);
 
-  // Cost breakdown vem do MonthlyPnl (consolidado em USD-equivalente — view mantida como referencia)
   const costBreakdown = useMemo(() => {
     return {
       ads: filtered.reduce((s, p) => s + p.cost_ads, 0),
@@ -196,8 +229,9 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
       {/* Aviso multi-moeda */}
       <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900">
         <strong>P&amp;L por moeda:</strong> as empresas operam em USD, GBP, EUR e BRL sem
-        conversao cambial automatica. Cada moeda e mostrada separadamente — somar moedas
-        diferentes nao gera um numero util.
+        conversao cambial automatica. P&amp;L = receita - despesa operacional. Caixa total
+        do periodo = P&amp;L + FX/interbank + intercompany + investidores + sem categoria
+        (deve bater com a variacao real do saldo bancario).
       </div>
 
       {/* P&L por moeda */}
@@ -207,8 +241,8 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
         </div>
       ) : (
         <div className="space-y-4">
-          {byCurrency.map((t) => (
-            <CurrencyBlock key={t.currency} totals={t} periodLabel={periodLabel} />
+          {byCurrency.map((d) => (
+            <CurrencyBlock key={d.currency} data={d} periodLabel={periodLabel} />
           ))}
         </div>
       )}
@@ -270,12 +304,13 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
 }
 
 interface CurrencyBlockProps {
-  totals: CurrencyTotals;
+  data: CurrencyData;
   periodLabel: string;
 }
 
-function CurrencyBlock({ totals, periodLabel }: CurrencyBlockProps) {
-  const { currency, revenue, costs, profit, margin } = totals;
+function CurrencyBlock({ data, periodLabel }: CurrencyBlockProps) {
+  const { currency, totals } = data;
+  const { revenue, costs, profit, margin, cash_delta } = totals;
 
   return (
     <div className="space-y-2">
@@ -286,8 +321,7 @@ function CurrencyBlock({ totals, periodLabel }: CurrencyBlockProps) {
         <span className="text-xs text-slate-500">{periodLabel}</span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Receita */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="card card-body">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">Receita</p>
@@ -300,7 +334,6 @@ function CurrencyBlock({ totals, periodLabel }: CurrencyBlockProps) {
           </p>
         </div>
 
-        {/* Despesas */}
         <div className="card card-body">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">Despesas</p>
@@ -313,7 +346,6 @@ function CurrencyBlock({ totals, periodLabel }: CurrencyBlockProps) {
           </p>
         </div>
 
-        {/* Lucro / Prejuizo */}
         <div className="card card-body">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">Lucro / Prejuizo</p>
@@ -332,44 +364,84 @@ function CurrencyBlock({ totals, periodLabel }: CurrencyBlockProps) {
             <p className="text-xs text-slate-400">Margem: {formatPercent(margin)}</p>
           </div>
         </div>
+
+        {/* Caixa total: variacao real do saldo no periodo (P&L + FX + intercompany + investimentos + uncat) */}
+        <div className="card card-body">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500">Caixa total</p>
+            <div className={`p-2 rounded-lg ${cash_delta >= 0 ? "bg-green-50" : "bg-red-50"}`}>
+              <Scale size={18} className={cash_delta >= 0 ? "text-green-600" : "text-red-600"} />
+            </div>
+          </div>
+          <p className={`text-2xl font-bold mt-2 ${cash_delta >= 0 ? "text-green-700" : "text-red-700"}`}>
+            {formatCurrency(cash_delta, currency)}
+          </p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Variacao do saldo no periodo
+          </p>
+        </div>
       </div>
 
-      <ReconciliationCard totals={totals} periodLabel={periodLabel} />
+      <ReconciliationCard data={data} periodLabel={periodLabel} />
     </div>
   );
 }
 
 interface ReconciliationCardProps {
-  totals: CurrencyTotals;
+  data: CurrencyData;
   periodLabel: string;
 }
 
-function ReconciliationCard({ totals, periodLabel }: ReconciliationCardProps) {
+function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showMonthly, setShowMonthly] = useState(false);
+  const { currency, totals, monthly } = data;
 
-  // Caixa OPERACIONAL: Receita - Despesas + Uncategorized (sem FX/intercompany/investimentos)
-  // (estes sao movimentos legitimos mas nao operacionais — nao deveriam afetar o P&L)
-  const operationalCash = totals.revenue - totals.costs + totals.uncategorized_flow;
   const pnlNet = totals.revenue - totals.costs;
-  const diff = operationalCash - pnlNet;
-  const hasProblems = Math.abs(totals.uncategorized_flow) > 1 || Math.abs(diff) > 1;
-  const isHealthy = !hasProblems;
+  // Caixa total = P&L + todos os movimentos nao-operacionais + uncategorized
+  // (deve igualar cash_delta por construcao)
+  const caixaTotal =
+    pnlNet +
+    totals.transfer_flow +
+    totals.intercompany_flow +
+    totals.investment_flow +
+    totals.uncategorized_flow;
 
-  const infoItems = [
+  // Saude da reconciliacao: SO depende de uncategorized.
+  // FX/intercompany/investidores agora SAO contabilizados — entao se ha pendencia, e classificacao.
+  const hasUncategorized = Math.abs(totals.uncategorized_flow) > 1;
+  const isHealthy = !hasUncategorized;
+
+  const components = [
     {
-      label: "Transferencias FX / interbank",
+      label: "P&L operacional (Receita - Despesa)",
+      value: pnlNet,
+      color: pnlNet >= 0 ? "text-green-700" : "text-red-700",
+      hint: "Lucro/prejuizo das operacoes",
+    },
+    {
+      label: "FX / interbank",
       value: totals.transfer_flow,
-      hint: "Conversoes entre moedas e movimentos entre suas contas. Esperado em operacao multi-moeda.",
+      color: "text-slate-700",
+      hint: "Conversoes cambiais e transferencias entre suas contas",
+    },
+    {
+      label: "Intercompany",
+      value: totals.intercompany_flow,
+      color: "text-slate-700",
+      hint: "Movimentos entre suas empresas",
     },
     {
       label: "Capital de investidores (SCP)",
       value: totals.investment_flow,
-      hint: "Aportes e retornos de investidores. E capital, nao receita operacional.",
+      color: "text-slate-700",
+      hint: "Aportes recebidos / retornos pagos",
     },
     {
-      label: "Intercompany (entre empresas)",
-      value: totals.intercompany_flow,
-      hint: "Transferencias entre suas proprias empresas. No consolidado deveria ser ~0.",
+      label: "Sem categoria",
+      value: totals.uncategorized_flow,
+      color: hasUncategorized ? "text-amber-700" : "text-slate-400",
+      hint: "Transacoes ainda nao classificadas — afeta o balanco",
     },
   ];
 
@@ -382,15 +454,15 @@ function ReconciliationCard({ totals, periodLabel }: ReconciliationCardProps) {
         <div className="flex items-center gap-2">
           <Scale size={16} className={isHealthy ? "text-green-600" : "text-amber-600"} />
           <h3 className="font-semibold text-sm">
-            Reconciliacao P&amp;L vs Caixa ({totals.currency})
+            Balanco de caixa ({currency})
           </h3>
           {isHealthy ? (
             <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-              OK — bate com P&amp;L
+              OK — tudo classificado
             </span>
           ) : (
             <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-              {formatCurrency(Math.abs(totals.uncategorized_flow), totals.currency)} sem categoria
+              {formatCurrency(Math.abs(totals.uncategorized_flow), currency)} sem categoria
             </span>
           )}
         </div>
@@ -398,78 +470,171 @@ function ReconciliationCard({ totals, periodLabel }: ReconciliationCardProps) {
       </button>
 
       {expanded && (
-        <div className="card-body space-y-3 text-sm">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-slate-50 rounded p-3">
-              <p className="text-xs text-slate-500">P&amp;L (Lucro Liquido)</p>
-              <p className={`text-lg font-bold ${pnlNet >= 0 ? "text-green-700" : "text-red-700"}`}>
-                {formatCurrency(pnlNet, totals.currency)}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Receita - Despesas (operacional)
-              </p>
-            </div>
-            <div className="bg-slate-50 rounded p-3">
-              <p className="text-xs text-slate-500">Caixa operacional</p>
-              <p className={`text-lg font-bold ${operationalCash >= 0 ? "text-green-700" : "text-red-700"}`}>
-                {formatCurrency(operationalCash, totals.currency)}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Receitas + Custos + Uncategorized (sem FX/intercompany/investimentos)
-              </p>
-            </div>
-            <div className={`rounded p-3 ${isHealthy ? "bg-green-50" : "bg-amber-50"}`}>
-              <p className="text-xs text-slate-500">Diferenca (deveria ser 0)</p>
-              <p className={`text-lg font-bold ${isHealthy ? "text-green-700" : "text-amber-700"}`}>
-                {formatCurrency(Math.abs(diff), totals.currency)}
-              </p>
-              <p className="text-[10px] text-slate-500 mt-1">
-                {isHealthy
-                  ? "P&L espelha o caixa operacional"
-                  : `${formatCurrency(Math.abs(totals.uncategorized_flow), totals.currency)} sem categoria — classifique`}
-              </p>
+        <div className="card-body space-y-4 text-sm">
+          {/* Decomposicao do caixa total */}
+          <div>
+            <p className="text-xs font-semibold text-slate-700 mb-2">
+              Decomposicao do caixa do periodo:
+            </p>
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              {components.map((c, i) => (
+                <div
+                  key={c.label}
+                  className={`flex items-start gap-3 px-3 py-2 ${
+                    i % 2 === 0 ? "bg-slate-50" : "bg-white"
+                  }`}
+                >
+                  <div className="flex-1">
+                    <p className="text-xs font-medium text-slate-700">{c.label}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{c.hint}</p>
+                  </div>
+                  <span className={`font-mono text-sm shrink-0 ${c.color}`}>
+                    {c.value >= 0 ? "+" : ""}
+                    {formatCurrency(c.value, currency)}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-start gap-3 px-3 py-2 bg-slate-100 border-t-2 border-slate-300">
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-slate-900">= Caixa total do periodo</p>
+                  <p className="text-[10px] text-slate-600 mt-0.5">
+                    Variacao real do saldo bancario em {currency}
+                  </p>
+                </div>
+                <span className={`font-mono text-base font-bold shrink-0 ${
+                  caixaTotal >= 0 ? "text-green-700" : "text-red-700"
+                }`}>
+                  {caixaTotal >= 0 ? "+" : ""}
+                  {formatCurrency(caixaTotal, currency)}
+                </span>
+              </div>
             </div>
           </div>
 
-          {Math.abs(totals.uncategorized_flow) > 1 && (
+          {hasUncategorized && (
             <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs">
               <p className="font-semibold text-amber-900">
-                ⚠ Uncategorized: {formatCurrency(totals.uncategorized_flow, totals.currency)}
+                ⚠ {formatCurrency(Math.abs(totals.uncategorized_flow), currency)} sem categoria
               </p>
               <p className="text-amber-700 mt-1">
-                Estas transacoes afetam o caixa mas NAO entram no P&amp;L.{" "}
+                Estas transacoes movimentam o caixa mas nao tem categoria.{" "}
                 <a href="/admin/transactions" className="underline">
                   Classifique em Transacoes
-                </a>
-                .
+                </a>{" "}
+                pra fechar a reconciliacao.
               </p>
             </div>
           )}
 
-          <div className="border-t border-slate-200 pt-3">
-            <p className="text-xs font-semibold text-slate-700 mb-2">
-              Movimentos nao-operacionais (informativos, nao afetam diferenca):
-            </p>
-            <div className="space-y-2">
-              {infoItems.filter((i) => Math.abs(i.value) > 0.5).map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-start gap-3 p-2 rounded bg-slate-50"
-                >
-                  <div className="flex-1">
-                    <p className="text-xs font-medium text-slate-700">{item.label}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">{item.hint}</p>
-                  </div>
-                  <span className="font-mono text-sm shrink-0 text-slate-700">
-                    {formatCurrency(item.value, totals.currency)}
-                  </span>
+          {/* Tabela mes a mes */}
+          {monthly.length > 0 && (
+            <div className="border-t border-slate-200 pt-3">
+              <button
+                onClick={() => setShowMonthly(!showMonthly)}
+                className="flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900"
+              >
+                {showMonthly ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                Detalhamento mes a mes ({monthly.length})
+              </button>
+              {showMonthly && (
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 font-medium text-slate-600">Mes</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">Receita</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">Despesa</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">P&amp;L</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">FX</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">Inter</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">Invest</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600">Uncat</th>
+                        <th className="text-right px-2 py-1.5 font-medium text-slate-600 border-l border-slate-200">
+                          Caixa
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthly.map((m) => {
+                        const { year, month } = parseLocalDate(m.month);
+                        const label = `${MONTH_NAMES[month]}/${String(year).slice(-2)}`;
+                        return (
+                          <tr key={m.month} className="border-t border-slate-100">
+                            <td className="px-2 py-1.5 font-medium text-slate-700">{label}</td>
+                            <td className="px-2 py-1.5 text-right font-mono text-green-700">
+                              {m.revenue > 0 ? formatCurrency(m.revenue, currency) : "—"}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono text-red-600">
+                              {m.costs > 0 ? formatCurrency(m.costs, currency) : "—"}
+                            </td>
+                            <td className={`px-2 py-1.5 text-right font-mono font-semibold ${
+                              m.profit >= 0 ? "text-green-700" : "text-red-700"
+                            }`}>
+                              {formatCurrency(m.profit, currency)}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                              {Math.abs(m.transfer_flow) > 0.5 ? formatCurrency(m.transfer_flow, currency) : "—"}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                              {Math.abs(m.intercompany_flow) > 0.5 ? formatCurrency(m.intercompany_flow, currency) : "—"}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                              {Math.abs(m.investment_flow) > 0.5 ? formatCurrency(m.investment_flow, currency) : "—"}
+                            </td>
+                            <td className={`px-2 py-1.5 text-right font-mono ${
+                              Math.abs(m.uncategorized_flow) > 0.5 ? "text-amber-700" : "text-slate-400"
+                            }`}>
+                              {Math.abs(m.uncategorized_flow) > 0.5 ? formatCurrency(m.uncategorized_flow, currency) : "—"}
+                            </td>
+                            <td className={`px-2 py-1.5 text-right font-mono font-bold border-l border-slate-200 ${
+                              m.cash_delta >= 0 ? "text-green-700" : "text-red-700"
+                            }`}>
+                              {formatCurrency(m.cash_delta, currency)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-slate-100 border-t-2 border-slate-300">
+                      <tr>
+                        <td className="px-2 py-1.5 font-bold text-slate-700">Total {periodLabel}</td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-green-700">
+                          {formatCurrency(totals.revenue, currency)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-red-600">
+                          {formatCurrency(totals.costs, currency)}
+                        </td>
+                        <td className={`px-2 py-1.5 text-right font-mono font-bold ${
+                          pnlNet >= 0 ? "text-green-700" : "text-red-700"
+                        }`}>
+                          {formatCurrency(pnlNet, currency)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono text-slate-700">
+                          {formatCurrency(totals.transfer_flow, currency)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono text-slate-700">
+                          {formatCurrency(totals.intercompany_flow, currency)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-mono text-slate-700">
+                          {formatCurrency(totals.investment_flow, currency)}
+                        </td>
+                        <td className={`px-2 py-1.5 text-right font-mono ${
+                          hasUncategorized ? "text-amber-700 font-bold" : "text-slate-400"
+                        }`}>
+                          {formatCurrency(totals.uncategorized_flow, currency)}
+                        </td>
+                        <td className={`px-2 py-1.5 text-right font-mono font-bold border-l border-slate-300 ${
+                          caixaTotal >= 0 ? "text-green-700" : "text-red-700"
+                        }`}>
+                          {formatCurrency(caixaTotal, currency)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
-              ))}
-              {infoItems.every((i) => Math.abs(i.value) < 0.5) && (
-                <p className="text-xs text-slate-400 italic">Nenhum movimento nao-operacional</p>
               )}
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
