@@ -23,6 +23,25 @@ function invalidateReceivablePaths() {
   revalidatePath("/api/invites/product");
 }
 
+// GET /api/receivables — retorna lista fresca (no-cache).
+// Query params:
+//   ?open_for_financing=true → filtra so abertos
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const openForFinancing = url.searchParams.get("open_for_financing");
+  const filter: any = {};
+  if (openForFinancing === "true") filter.open_for_financing = true;
+  if (openForFinancing === "false") filter.open_for_financing = false;
+  try {
+    const list = await repository.getReceivables(filter);
+    return NextResponse.json(list, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Erro" }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();

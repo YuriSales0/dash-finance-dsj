@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { formatCurrency } from "@/lib/format";
-import { Link2, Copy, Check, Loader2, Send } from "lucide-react";
+import { Link2, Copy, Check, Loader2, Send, RefreshCw } from "lucide-react";
 
 interface ReceivableOption {
   id: number;
@@ -14,19 +14,63 @@ interface ReceivableOption {
 }
 
 export function InviteGenerator({
-  receivables,
+  receivables: initialReceivables,
   disabled,
 }: {
   receivables: ReceivableOption[];
   disabled?: boolean;
 }) {
-  const [receivableId, setReceivableId] = useState(receivables[0]?.id?.toString() || "");
+  // Mantem propria lista pra poder atualizar via refetch (usuario pode ter
+  // editado um recebivel em /admin/receivables sem ter recarregado a pagina).
+  const [receivables, setReceivables] = useState<ReceivableOption[]>(initialReceivables);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+  const [receivableId, setReceivableId] = useState(initialReceivables[0]?.id?.toString() || "");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ code: string; link: string } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const refetch = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/receivables?open_for_financing=true", {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mapped: ReceivableOption[] = (data || [])
+          .filter((r: any) => r.status !== "paid")
+          .map((r: any) => ({
+            id: r.id,
+            description: r.description,
+            amount_total: r.amount_total,
+            currency: r.currency,
+            interest_rate: r.financing_interest_rate_pct || 0,
+            redemption_days: r.financing_redemption_days || 0,
+          }));
+        setReceivables(mapped);
+        setLastFetched(new Date());
+      }
+    } catch {
+      // best effort
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Auto-refresh ao montar e quando a janela ganha foco (usuario voltou
+  // da aba de recebiveis depois de editar)
+  useEffect(() => {
+    refetch();
+    function onFocus() {
+      refetch();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refetch]);
 
   const selected = receivables.find((r) => r.id === Number(receivableId));
 
@@ -60,11 +104,42 @@ export function InviteGenerator({
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function timeAgo(d: Date): string {
+    const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (sec < 5) return "agora";
+    if (sec < 60) return `${sec}s atras`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}min atras`;
+    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
   return (
     <div className="space-y-6">
       {/* Passo 1: selecionar produto */}
       <div className="card">
-        <div className="card-header"><h3 className="font-semibold">1. Selecionar produto</h3></div>
+        <div className="card-header flex items-center justify-between">
+          <h3 className="font-semibold">1. Selecionar produto</h3>
+          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+            {lastFetched && (
+              <span>
+                Atualizado {timeAgo(lastFetched)}
+              </span>
+            )}
+            <button
+              onClick={refetch}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 hover:underline disabled:opacity-50"
+              title="Re-busca a lista de recebiveis abertos. Use se acabou de editar uma operacao em /admin/receivables."
+            >
+              {refreshing ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : (
+                <RefreshCw size={11} />
+              )}
+              Recarregar
+            </button>
+          </div>
+        </div>
         <div className="card-body space-y-4">
           {receivables.length === 0 ? (
             <div className="text-sm text-slate-500">
@@ -81,7 +156,7 @@ export function InviteGenerator({
                 <option value="">Convite generico (sem produto especifico)</option>
                 {receivables.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.description} — {formatCurrency(r.amount_total, r.currency)} ({r.interest_rate}%, {r.redemption_days}d)
+                    {r.description} — {formatCurrency(r.amount_total, r.currency)} ({r.interest_rate}%/mes, {r.redemption_days}d)
                   </option>
                 ))}
               </select>
@@ -94,7 +169,7 @@ export function InviteGenerator({
                   </div>
                   <div>
                     <p className="text-xs text-slate-500">Taxa de juros</p>
-                    <p className="font-semibold">{selected.interest_rate}%</p>
+                    <p className="font-semibold">{selected.interest_rate}% ao mes</p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500">Prazo</p>
