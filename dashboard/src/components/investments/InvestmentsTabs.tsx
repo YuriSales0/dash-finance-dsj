@@ -442,11 +442,20 @@ function PreviewContent({
                   <div key={r.id} className="border border-slate-200 rounded-lg p-3 bg-white">
                     <div className="flex items-start justify-between mb-2">
                       <div>
-                        <p className="font-medium text-sm">{r.description}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{r.counterparty}</p>
+                        {/* Mesma sanitizacao de /investor/opportunities — investidor
+                            NAO ve description/counterparty (info sensivel) */}
+                        <p className="font-medium text-sm">
+                          Operacao #{r.id} ({r.currency})
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {entityNames[r.entity_id] || r.entity_id}
+                        </p>
                       </div>
                       <Badge variant="info">Aberto</Badge>
                     </div>
+                    {r.financing_terms && (
+                      <p className="text-xs text-slate-600 italic mb-2">{r.financing_terms}</p>
+                    )}
                     <div className="grid grid-cols-3 gap-3 text-xs">
                       <div>
                         <p className="text-slate-500">Taxa</p>

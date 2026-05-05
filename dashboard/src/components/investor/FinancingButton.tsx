@@ -33,15 +33,14 @@ export function FinancingButton({ receivableId, minAmount, maxAmount, rate, days
     }
 
     setLoading(true);
-    const res = await fetch("/api/financings", {
+    // Usa o endpoint /sign que valida server-side (min/max/available, calcula
+    // expected_return server-side, faz sanity check pos-insert pra evitar race).
+    const res = await fetch("/api/financings/sign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         receivable_id: receivableId,
         amount_invested: numAmount,
-        interest_rate_pct: rate,
-        redemption_days: days,
-        expected_return: expectedReturn,
       }),
     });
     setLoading(false);

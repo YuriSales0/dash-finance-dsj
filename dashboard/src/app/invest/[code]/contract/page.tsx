@@ -42,12 +42,8 @@ export default function ContractPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        invite_code: code,
         receivable_id: product?.receivable_id,
         amount_invested: numAmount,
-        interest_rate_pct: rate,
-        redemption_days: days,
-        expected_return: expectedReturn,
       }),
     });
 

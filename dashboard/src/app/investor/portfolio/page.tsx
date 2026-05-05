@@ -62,8 +62,11 @@ export default async function PortfolioPage() {
           <div key={f.id} className="card">
             <div className="card-header flex items-center justify-between">
               <div>
-                <h3 className="font-semibold">{r?.description || `Financiamento #${f.id}`}</h3>
-                <p className="text-xs text-slate-500">{r?.counterparty}</p>
+                {/* Investidor nao ve description/counterparty (info sensivel) */}
+                <h3 className="font-semibold">
+                  Operacao #{r?.id || f.receivable_id} ({r?.currency || ""})
+                </h3>
+                <p className="text-xs text-slate-500">Financiamento #{f.id}</p>
               </div>
               <Badge variant={f.status === "active" ? "success" : "warning"}>
                 {f.status === "active" ? "Ativo" : "Pendente"}
@@ -217,7 +220,7 @@ export default async function PortfolioPage() {
                   const profit = (f.actual_return || 0) - f.amount_invested;
                   return (
                     <tr key={f.id} className="border-b border-slate-100">
-                      <td className="py-3 px-4">{r?.description}</td>
+                      <td className="py-3 px-4">Operacao #{f.receivable_id}</td>
                       <td className="py-3 px-4 text-right font-mono">{formatCurrency(f.amount_invested)}</td>
                       <td className="py-3 px-4 text-right font-mono">{formatCurrency(f.actual_return || 0)}</td>
                       <td className="py-3 px-4 text-right font-mono text-green-600">+{formatCurrency(profit)}</td>

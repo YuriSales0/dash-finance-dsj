@@ -1,5 +1,5 @@
 import { repository } from "@/lib/data/repository";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency, formatDate, entityNames } from "@/lib/format";
 import { Calendar, TrendingUp, Clock } from "lucide-react";
 import { FinancingButton } from "@/components/investor/FinancingButton";
 
@@ -36,15 +36,25 @@ export default async function OpportunitiesPage() {
                 <div className="card-body">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <h3 className="font-semibold text-lg">{r.description}</h3>
-                      <p className="text-sm text-slate-500">{r.counterparty}</p>
+                      {/* Investidor nao ve description/counterparty (info sensivel
+                          de cliente DSJ). Ve entity emissora + termos publicos. */}
+                      <h3 className="font-semibold text-lg">
+                        Operacao #{r.id} ({r.currency})
+                      </h3>
+                      <p className="text-sm text-slate-500">
+                        Emitido por {entityNames[r.entity_id] || r.entity_id}
+                      </p>
                     </div>
                     <span className="badge-info">Aberto</span>
                   </div>
 
-                  {r.financing_terms && (
+                  {r.financing_terms ? (
                     <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg mb-4">
                       {r.financing_terms}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic mb-4">
+                      Sem detalhes publicados pela DSJ.
                     </p>
                   )}
 
