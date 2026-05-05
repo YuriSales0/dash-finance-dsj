@@ -393,7 +393,8 @@ interface ReconciliationCardProps {
 }
 
 function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  // Decomposicao SEMPRE visivel pra deixar claro que FX/intercompany entram no balanco.
+  // Tabela mensal e opcional (toggle).
   const [showMonthly, setShowMonthly] = useState(false);
   const { currency, totals, monthly } = data;
 
@@ -447,10 +448,7 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
 
   return (
     <div className="card">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full card-header flex items-center justify-between hover:bg-slate-50 transition"
-      >
+      <div className="card-header flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Scale size={16} className={isHealthy ? "text-green-600" : "text-amber-600"} />
           <h3 className="font-semibold text-sm">
@@ -466,12 +464,10 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
             </span>
           )}
         </div>
-        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </button>
+      </div>
 
-      {expanded && (
-        <div className="card-body space-y-4 text-sm">
-          {/* Decomposicao do caixa total */}
+      <div className="card-body space-y-4 text-sm">
+          {/* Decomposicao do caixa total — SEMPRE visivel */}
           <div>
             <p className="text-xs font-semibold text-slate-700 mb-2">
               Decomposicao do caixa do periodo:
@@ -636,7 +632,6 @@ function ReconciliationCard({ data, periodLabel }: ReconciliationCardProps) {
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }

@@ -578,7 +578,8 @@ class SupabaseRepository implements Repository {
       b.cash_delta += amt;
       b.count++;
 
-      if (t.is_intercompany) {
+      // intercompany: ou pela flag is_intercompany OU pela categoria transfer_intercompany
+      if (t.is_intercompany || t.category_id === "transfer_intercompany") {
         b.intercompany_flow += amt;
       } else if (!t.category_id) {
         b.uncategorized_flow += amt;
@@ -587,6 +588,7 @@ class SupabaseRepository implements Repository {
       } else if (t.category_id.startsWith("cost")) {
         b.cost_flow += amt;
       } else if (t.category_id.startsWith("transfer")) {
+        // transfer_fx, transfer_interbank (intercompany ja foi tratado acima)
         b.transfer_flow += amt;
       } else if (t.category_id.startsWith("investment")) {
         b.investment_flow += amt;
@@ -660,7 +662,8 @@ class SupabaseRepository implements Repository {
       b.cash_delta += amt;
       b.count++;
 
-      if (t.is_intercompany) {
+      // intercompany: ou pela flag is_intercompany OU pela categoria transfer_intercompany
+      if (t.is_intercompany || t.category_id === "transfer_intercompany") {
         b.intercompany_flow += amt;
       } else if (!t.category_id) {
         b.uncategorized_flow += amt;
@@ -669,6 +672,7 @@ class SupabaseRepository implements Repository {
       } else if (t.category_id.startsWith("cost")) {
         b.cost_flow += amt;
       } else if (t.category_id.startsWith("transfer")) {
+        // transfer_fx, transfer_interbank (intercompany ja foi tratado acima)
         b.transfer_flow += amt;
       } else if (t.category_id.startsWith("investment")) {
         b.investment_flow += amt;
