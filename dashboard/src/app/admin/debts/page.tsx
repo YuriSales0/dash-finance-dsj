@@ -3,7 +3,6 @@ import { repository } from "@/lib/data/repository";
 import { formatCurrency } from "@/lib/format";
 import { DebtForm } from "@/components/debts/DebtForm";
 import { DebtsTable } from "@/components/debts/DebtsTable";
-import { PendingByCurrencyCard } from "@/components/debts/PendingByCurrencyCard";
 import { TermCardWithDetails, type DebtOccurrence } from "@/components/debts/TermCardWithDetails";
 import type { Debt } from "@/types/database";
 
@@ -24,6 +23,8 @@ const TERM_HORIZON_DAYS = 365;
 
 // Gera todas as ocorrencias futuras + atrasadas de uma divida.
 // Para recorrentes/parcelados, ja desconta as ocorrencias quitadas (via amount_paid).
+// Marca is_next_unpaid=true APENAS na primeira ocorrencia cronologica (mais antiga
+// ou mais proxima de hoje) — pra UX clara de "marcar pago = pagar a proxima".
 function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
   if (d.status === "paid") return [];
   const remaining = d.amount_total - d.amount_paid;
@@ -37,11 +38,21 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
   const isAporteParcelado = isAporte && !!d.interest_payment_interval;
   const isEmprestimoParcelado = isEmprestimo && !!d.interest_payment_interval;
   const commission = d.fixed_commission || 0;
+  const isPerpetualRecurring = !!(d.is_recurring && !d.recurrence_end_date);
 
   const out: DebtOccurrence[] = [];
+  const baseFields = {
+    debt_id: d.id,
+    description: d.description,
+    creditor: d.creditor,
+    entity_id: d.entity_id,
+    currency: d.currency,
+    amount_paid: d.amount_paid,
+    amount_total: d.amount_total,
+    is_perpetual_recurring: isPerpetualRecurring,
+  };
 
   if (isAporteParcelado) {
-    // Parcelas de juros (interest-only) + balloon principal
     const intDays = intervalDaysFor(d.interest_payment_interval);
     const interestPerPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
     if (intDays > 0 && interestPerPayment > 0) {
@@ -52,20 +63,15 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
         if (i <= paidInstallments) continue;
         const paymentDate = new Date(today.getTime() + i * intDays * 86400000);
         out.push({
-          debt_id: d.id,
-          description: d.description,
-          creditor: d.creditor,
-          entity_id: d.entity_id,
+          ...baseFields,
           amount: interestPerPayment,
-          currency: d.currency,
           payment_date: paymentDate.toISOString().slice(0, 10),
           days_from_today: i * intDays,
           kind: "aporte_juros",
           occurrence_index: i,
           total_occurrences: totalInstallments,
           per_occurrence_amount: interestPerPayment,
-          amount_paid: d.amount_paid,
-          amount_total: d.amount_total,
+          is_next_unpaid: i === paidInstallments + 1,
         });
       }
     }
@@ -73,18 +79,13 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
     const balloon = remaining + commission;
     if (balloon > 0) {
       out.push({
-        debt_id: d.id,
-        description: d.description,
-        creditor: d.creditor,
-        entity_id: d.entity_id,
+        ...baseFields,
         amount: balloon,
-        currency: d.currency,
         payment_date: d.due_date,
         days_from_today: daysUntilDue,
         kind: "aporte_balloon",
         per_occurrence_amount: balloon,
-        amount_paid: d.amount_paid,
-        amount_total: d.amount_total,
+        is_next_unpaid: false, // balloon e pago no fim, nao via mark-paid incremental
       });
     }
   } else if (isEmprestimoParcelado) {
@@ -100,118 +101,73 @@ function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
           const paymentDate = new Date(issueDate.getTime() + i * intDays * 86400000);
           const daysFromToday = (paymentDate.getTime() - today.getTime()) / 86400000;
           out.push({
-            debt_id: d.id,
-            description: d.description,
-            creditor: d.creditor,
-            entity_id: d.entity_id,
+            ...baseFields,
             amount: perInstallment,
-            currency: d.currency,
             payment_date: paymentDate.toISOString().slice(0, 10),
             days_from_today: daysFromToday,
             kind: "emprestimo_parcela",
             occurrence_index: i,
             total_occurrences: installmentsTotal,
             per_occurrence_amount: perInstallment,
-            amount_paid: d.amount_paid,
-            amount_total: d.amount_total,
+            is_next_unpaid: i === paidInstallments + 1,
           });
         }
       } else {
-        // Periodo curto demais — trata como pontual
         out.push({
-          debt_id: d.id,
-          description: d.description,
-          creditor: d.creditor,
-          entity_id: d.entity_id,
+          ...baseFields,
           amount: remaining,
-          currency: d.currency,
           payment_date: d.due_date,
           days_from_today: daysUntilDue,
           kind: "pontual",
           per_occurrence_amount: remaining,
-          amount_paid: d.amount_paid,
-          amount_total: d.amount_total,
+          is_next_unpaid: false,
         });
       }
     }
   } else if (d.is_recurring && d.recurrence_interval) {
+    // Recorrente: itera todas as ocorrencias entre issue_date e (today + horizonte | recurrence_end_date),
+    // pulando as primeiras `paidOccurrences` (em ordem cronologica desde a primeira ocorrencia, due_date).
     const intDays = intervalDaysFor(d.recurrence_interval);
     const perOccurrence = d.amount_total + commission;
-    const recurrenceEnd = d.recurrence_end_date ? new Date(d.recurrence_end_date) : null;
-    const recurrenceLimitDays = recurrenceEnd
-      ? Math.min(TERM_HORIZON_DAYS, (recurrenceEnd.getTime() - today.getTime()) / 86400000)
-      : TERM_HORIZON_DAYS;
-
     if (intDays > 0 && perOccurrence > 0) {
-      // Quantas ocorrencias ja foram quitadas via amount_paid
+      const recurrenceEnd = d.recurrence_end_date ? new Date(d.recurrence_end_date) : null;
+      const horizonEnd = new Date(today.getTime() + TERM_HORIZON_DAYS * 86400000);
+      const lastDate = recurrenceEnd && recurrenceEnd < horizonEnd ? recurrenceEnd : horizonEnd;
+
       const paidOccurrences = Math.floor(d.amount_paid / perOccurrence);
+      let occDate = new Date(dueDate);
       let occIndex = 0;
-      let occDays = daysUntilDue;
-      // Avanca pra primeira ocorrencia futura se due_date ja passou
-      while (occDays < 0) {
-        occIndex++;
-        occDays += intDays;
-      }
-      // Marca a primeira ocorrencia atrasada (caso exista) — mas SO se nao
-      // estiver coberta por amount_paid
-      if (daysUntilDue < 0 && occIndex > paidOccurrences) {
-        const overdueDate = new Date(today.getTime() + daysUntilDue * 86400000);
-        out.push({
-          debt_id: d.id,
-          description: d.description,
-          creditor: d.creditor,
-          entity_id: d.entity_id,
-          amount: perOccurrence,
-          currency: d.currency,
-          payment_date: overdueDate.toISOString().slice(0, 10),
-          days_from_today: daysUntilDue,
-          kind: "recorrente",
-          occurrence_index: 1,
-          per_occurrence_amount: perOccurrence,
-          amount_paid: d.amount_paid,
-          amount_total: d.amount_total,
-        });
-      }
-      // Itera ocorrencias futuras
-      while (occDays <= recurrenceLimitDays) {
+      let firstUnpaidAdded = false;
+      while (occDate <= lastDate) {
         occIndex++;
         if (occIndex > paidOccurrences) {
-          const paymentDate = new Date(today.getTime() + occDays * 86400000);
+          const days = (occDate.getTime() - today.getTime()) / 86400000;
           out.push({
-            debt_id: d.id,
-            description: d.description,
-            creditor: d.creditor,
-            entity_id: d.entity_id,
+            ...baseFields,
             amount: perOccurrence,
-            currency: d.currency,
-            payment_date: paymentDate.toISOString().slice(0, 10),
-            days_from_today: occDays,
+            payment_date: occDate.toISOString().slice(0, 10),
+            days_from_today: days,
             kind: "recorrente",
             occurrence_index: occIndex,
             per_occurrence_amount: perOccurrence,
-            amount_paid: d.amount_paid,
-            amount_total: d.amount_total,
+            is_next_unpaid: !firstUnpaidAdded,
           });
+          firstUnpaidAdded = true;
         }
-        occDays += intDays;
+        occDate = new Date(occDate.getTime() + intDays * 86400000);
       }
     }
   } else {
     // Pontual
     const total = remaining + (isAporte ? commission : 0);
     out.push({
-      debt_id: d.id,
-      description: d.description,
-      creditor: d.creditor,
-      entity_id: d.entity_id,
+      ...baseFields,
       amount: total,
-      currency: d.currency,
       payment_date: d.due_date,
       days_from_today: daysUntilDue,
       kind: "pontual",
       per_occurrence_amount: total,
-      amount_paid: d.amount_paid,
-      amount_total: d.amount_total,
+      is_next_unpaid: false,
     });
   }
 
@@ -257,22 +213,11 @@ export default async function DebtsPage() {
     return t;
   }
 
-  // "A pagar" (imediato) = atrasadas + curto prazo
-  const pendingByCurrency: Record<string, number> = {};
-  const next30ByCurrency: Record<string, number> = {};
-  const overdueTotals = totalsByCurrency(occurrencesByBucket.overdue);
-  const shortTotals = totalsByCurrency(occurrencesByBucket.short);
-  const allCurrencies = Array.from(new Set<string>([
-    ...Object.keys(overdueTotals),
-    ...Object.keys(shortTotals),
-  ]));
-  for (const cur of allCurrencies) {
-    const immediate = (overdueTotals[cur] || 0) + (shortTotals[cur] || 0);
-    if (immediate > 0) {
-      pendingByCurrency[cur] = immediate;
-      next30ByCurrency[cur] = immediate;
-    }
-  }
+  // "A pagar" (imediato) = atrasadas + curto prazo (ocorrencias combinadas)
+  const immediateOccurrences = [
+    ...occurrencesByBucket.overdue,
+    ...occurrencesByBucket.short,
+  ];
 
   // Projecao 90 dias: soma de ocorrencias com days_from_today em [0, 90]
   const projectionDays = 90;
@@ -290,10 +235,11 @@ export default async function DebtsPage() {
       <div className="p-6 space-y-6">
         {/* Cards de classificacao por prazo */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <PendingByCurrencyCard
-            debts={debts}
-            pendingByCurrency={pendingByCurrency}
-            next30ByCurrency={next30ByCurrency}
+          <TermCardWithDetails
+            label="A pagar (imediato)"
+            sublabel="atrasadas + ≤ 35 dias"
+            color="red"
+            occurrences={immediateOccurrences}
           />
           <TermCardWithDetails
             label="Curto prazo"

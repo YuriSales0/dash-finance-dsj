@@ -20,6 +20,11 @@ export interface DebtOccurrence {
   per_occurrence_amount: number;
   amount_paid: number;
   amount_total: number;
+  // Flag: e a proxima ocorrencia cronologica nao paga desta divida?
+  // Mark paid so e habilitado nesta — pra evitar confusao com out-of-order.
+  is_next_unpaid: boolean;
+  // Recorrente sem end_date nunca vira "paid", so "partial".
+  is_perpetual_recurring: boolean;
 }
 
 interface Props {
@@ -114,6 +119,7 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
   const [filterCurrency, setFilterCurrency] = useState<string | null>(null);
   const [marking, setMarking] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const currencies = Object.keys(totals);
   const filtered = occurrences
@@ -123,9 +129,11 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
   async function markPaid(occ: DebtOccurrence) {
     setMarking(occ.debt_id);
     setError(null);
+    setSuccess(null);
     const newAmountPaid = Math.round((occ.amount_paid + occ.per_occurrence_amount) * 100) / 100;
-    const newStatus =
-      newAmountPaid >= occ.amount_total ? "paid" : "partial";
+    // Recorrente perpetua nunca vira "paid" (sempre tem proxima ocorrencia)
+    const wouldBePaid = newAmountPaid >= occ.amount_total && !occ.is_perpetual_recurring;
+    const newStatus = wouldBePaid ? "paid" : "partial";
     const res = await fetch("/api/debts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -141,6 +149,7 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
       setError(data.error || `Erro ${res.status}`);
       return;
     }
+    setSuccess(`Marcado: ${formatCurrency(occ.per_occurrence_amount, occ.currency)} pago em "${occ.description}"`);
     router.refresh();
   }
 
@@ -202,8 +211,20 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
         )}
 
         {error && (
-          <div className="mx-4 mt-2 bg-red-50 text-red-700 rounded p-2 text-xs">
-            {error}
+          <div className="mx-4 mt-2 bg-red-50 text-red-700 rounded p-2 text-xs flex justify-between gap-2">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {success && (
+          <div className="mx-4 mt-2 bg-green-50 text-green-800 rounded p-2 text-xs flex justify-between gap-2">
+            <span>{success}</span>
+            <button onClick={() => setSuccess(null)} className="text-green-700 hover:text-green-900">
+              <X size={12} />
+            </button>
           </div>
         )}
 
@@ -213,10 +234,13 @@ function DetailModal({ label, sublabel, totals, occurrences, onClose }: DetailMo
           ) : (
             filtered.map((o, idx) => {
               const isOverdue = o.days_from_today < 0;
+              // So permitir marcar pago na PROXIMA cronologica nao paga (evita
+              // confusao com out-of-order — clicar na 5a parcela ignoraria as 1-4)
               const canMarkPaid =
-                o.kind === "recorrente" ||
-                o.kind === "emprestimo_parcela" ||
-                o.kind === "aporte_juros";
+                (o.kind === "recorrente" ||
+                  o.kind === "emprestimo_parcela" ||
+                  o.kind === "aporte_juros") &&
+                o.is_next_unpaid;
               return (
                 <div
                   key={`${o.debt_id}-${idx}`}

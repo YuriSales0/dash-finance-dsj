@@ -139,14 +139,43 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+
+    // Validacoes
+    if (!form.issue_date || !form.due_date) {
+      setError("Data de emissao e vencimento sao obrigatorias");
+      return;
+    }
+    if (new Date(form.due_date) < new Date(form.issue_date)) {
+      setError("Data de vencimento nao pode ser anterior a emissao");
+      return;
+    }
+    const totalNum = Number(form.amount_total);
+    if (!(totalNum > 0)) {
+      setError("Valor total deve ser maior que zero");
+      return;
+    }
+    if (isEdit) {
+      const paidNum = Number(form.amount_paid) || 0;
+      if (paidNum < 0) {
+        setError("Valor ja pago nao pode ser negativo");
+        return;
+      }
+      // Para recorrente, amount_paid pode passar amount_total (representa varias ocorrencias)
+      const isRecurringPerpetual = form.is_recurring && !form.recurrence_end_date;
+      if (!isRecurringPerpetual && paidNum > totalNum + 0.005) {
+        setError(`Valor ja pago (${paidNum}) nao pode exceder valor total (${totalNum})`);
+        return;
+      }
+    }
+
+    setLoading(true);
 
     const payload: any = {
       entity_id: form.entity_id,
       description: form.description,
       creditor: form.creditor || null,
-      amount_total: Number(form.amount_total),
+      amount_total: totalNum,
       currency: form.currency,
       issue_date: form.issue_date,
       due_date: form.due_date,
