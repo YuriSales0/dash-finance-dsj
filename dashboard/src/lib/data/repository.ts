@@ -44,11 +44,15 @@ function detectDemoMode(): boolean {
   const explicit = process.env.DEMO_MODE?.toLowerCase();
   if (explicit === "true") return true;
   if (explicit === "false") return false;
-  // Nao explicito — detecta pela presenca de Supabase
-  const supabaseConfigured = !!(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
-  return !supabaseConfigured;
+  // DEMO_MODE nao foi setado explicitamente:
+  //   - Production: NUNCA vai em demo (prefere errar com falta de Supabase
+  //     a vazar mock data como real)
+  //   - Development/preview: padrao demo (facilita rodar localmente sem
+  //     precisar configurar Supabase)
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return true;
 }
 const DEMO_MODE = detectDemoMode();
 
