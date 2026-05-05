@@ -26,6 +26,11 @@ interface Props {
   metrics: InvestorMetrics | null;
   pnl12m: MonthlyPnl[];
   openReceivables: Receivable[];
+  // Pipeline de recebimentos confirmados no ano corrente, por moeda.
+  // Soma de (amount_total - amount_received) de receivables nao-pagos
+  // com due_date no ano atual.
+  pipelineByCurrency?: Record<string, number>;
+  pipelineYear?: number;
   isPreview?: boolean;
   // Permitir que admin sobreescreva o link de "Ver oportunidades"
   opportunitiesHref?: string;
@@ -50,9 +55,13 @@ export function InvestorHomeView({
   metrics,
   pnl12m,
   openReceivables,
+  pipelineByCurrency = {},
+  pipelineYear = new Date().getFullYear(),
   isPreview = false,
   opportunitiesHref = "/investor/opportunities",
 }: Props) {
+  const pipelineCurrencies = Object.entries(pipelineByCurrency).filter(([, v]) => v > 0);
+  const hasPipeline = pipelineCurrencies.length > 0;
   // Calcular metricas derivadas a partir do P&L 12m
   const rawRevenue12m = pnl12m.reduce((s, p) => s + (p.revenue || 0), 0);
   const totalCosts12m = pnl12m.reduce((s, p) => s + (p.total_costs || 0), 0);
@@ -296,6 +305,53 @@ export function InvestorHomeView({
           </p>
         </div>
       </div>
+
+      {/* A receber em {ano} — pipeline de recebimentos confirmados */}
+      {hasPipeline && (
+        <div className="card border-2 border-green-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-green-50 to-brand-50 px-6 py-4 border-b border-green-100">
+            <div className="flex items-baseline justify-between">
+              <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                <Wallet size={18} className="text-green-600" />A receber em {pipelineYear}
+              </h3>
+              <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                Operacoes ja contratadas
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 mt-1">
+              Soma dos recebiveis ja capturados que vencem em {pipelineYear} e ainda nao
+              foram recebidos. E o caixa que ja entrou no pipeline da DSJ.
+            </p>
+          </div>
+          <div className="card-body grid grid-cols-1 md:grid-cols-4 gap-3">
+            {pipelineCurrencies
+              .sort(([a], [b]) => {
+                const order = ["USD", "GBP", "EUR", "BRL"];
+                const ai = order.indexOf(a);
+                const bi = order.indexOf(b);
+                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+              })
+              .map(([currency, amount]) => (
+                <div
+                  key={currency}
+                  className="bg-slate-50 rounded-lg p-3 border border-slate-100"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-bold bg-slate-900 text-white px-1.5 py-0.5 rounded">
+                      {currency}
+                    </span>
+                  </div>
+                  <p className="text-xl font-bold text-green-700">
+                    {formatCurrency(amount, currency)}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    a receber em {pipelineYear}
+                  </p>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Track record / transparencia */}
       <div className="card">

@@ -18,7 +18,9 @@ export default async function InvestmentsPage({
     repository.getInvestors(),
     repository.getOpportunities(),
     repository.getInvestments(),
-    repository.getReceivables({ open_for_financing: true }),
+    // Busca TODOS receivables (nao so open_for_financing) — preview
+    // calcula pipeline anual a partir do conjunto completo.
+    repository.getReceivables(),
     repository.getInvestorMetrics(),
     repository.getMonthlyPnl({ entity_id: "consolidated", months: 12 }),
   ]);

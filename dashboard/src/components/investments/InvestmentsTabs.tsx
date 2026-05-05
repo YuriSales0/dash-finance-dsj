@@ -362,6 +362,18 @@ function PreviewContent({
     (r) => r.open_for_financing && r.status !== "paid"
   );
 
+  // Pipeline 2026: recebiveis em aberto que vencem no ano corrente, por moeda
+  const pipelineYear = new Date().getFullYear();
+  const pipelineByCurrency: Record<string, number> = {};
+  for (const r of receivables) {
+    if (r.status === "paid" || r.status === "defaulted") continue;
+    if (!r.due_date || !r.currency) continue;
+    if (new Date(r.due_date).getFullYear() !== pipelineYear) continue;
+    const remaining = r.amount_total - r.amount_received;
+    if (remaining <= 0) continue;
+    pipelineByCurrency[r.currency] = (pipelineByCurrency[r.currency] || 0) + remaining;
+  }
+
   return (
     <div className="space-y-6">
       <div className="card card-body bg-blue-50 border-blue-200">
@@ -382,6 +394,8 @@ function PreviewContent({
           metrics={metrics}
           pnl12m={pnl12m}
           openReceivables={openReceivables}
+          pipelineByCurrency={pipelineByCurrency}
+          pipelineYear={pipelineYear}
           isPreview
         />
       </div>
