@@ -185,17 +185,39 @@ export function ReceivablesTable({ receivables }: Props) {
                       : <span className="text-slate-300">-</span>}
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <Badge variant={
-                      r.status === "paid" ? "success" :
-                      r.status === "overdue" || r.status === "defaulted" ? "danger" :
-                      r.open_for_financing ? "info" : "neutral"
-                    }>
-                      {r.status === "paid" ? "Pago" :
-                       r.status === "overdue" ? "Atrasado" :
-                       r.status === "defaulted" ? "Default" :
-                       r.status === "partial" ? "Parcial" :
-                       r.open_for_financing ? "Aberto" : "Pendente"}
-                    </Badge>
+                    {(() => {
+                      // U8: status derivado por prioridade — paid > defaulted >
+                      // overdue (incluindo derived de due_date) > partial > open >
+                      // pending. Antes 'open_for_financing' ofuscava 'overdue'
+                      // quando admin nao tinha atualizado o status manualmente.
+                      const isOverdueByDate =
+                        r.status !== "paid" && new Date(r.due_date) < new Date();
+                      const variant =
+                        r.status === "paid"
+                          ? "success"
+                          : r.status === "defaulted"
+                          ? "danger"
+                          : r.status === "overdue" || isOverdueByDate
+                          ? "danger"
+                          : r.status === "partial"
+                          ? "warning"
+                          : r.open_for_financing
+                          ? "info"
+                          : "neutral";
+                      const label =
+                        r.status === "paid"
+                          ? "Pago"
+                          : r.status === "defaulted"
+                          ? "Default"
+                          : r.status === "overdue" || isOverdueByDate
+                          ? "Atrasado"
+                          : r.status === "partial"
+                          ? "Parcial"
+                          : r.open_for_financing
+                          ? "Aberto"
+                          : "Pendente";
+                      return <Badge variant={variant}>{label}</Badge>;
+                    })()}
                   </td>
                   <td className="py-3 px-4 text-right">
                     <button

@@ -13,20 +13,29 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-// Calcula a segunda-feira da semana de uma data (em ISO YYYY-MM-DD)
+// L9: helpers de data sempre em "local-iso" (YYYY-MM-DD via componentes
+// locais, nao toISOString que retorna UTC). Antes mistura local/UTC podia
+// shiftar 1 dia em timezones nao-UTC (Brasil eh UTC-3).
+function toLocalIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function mondayOf(d: Date): string {
   const day = d.getDay(); // 0=domingo, 1=segunda, ..., 6=sabado
   const offset = day === 0 ? -6 : 1 - day; // segunda como inicio
   const monday = new Date(d);
   monday.setHours(0, 0, 0, 0);
   monday.setDate(monday.getDate() + offset);
-  return monday.toISOString().slice(0, 10);
+  return toLocalIso(monday);
 }
 
 function addDaysIso(iso: string, n: number): string {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return toLocalIso(d);
 }
 
 export default async function CalendarPage({
@@ -35,7 +44,7 @@ export default async function CalendarPage({
   searchParams: { week?: string };
 }) {
   const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
+  const todayIso = toLocalIso(today);
   // weekStart: dia 'segunda' da semana selecionada
   const weekStart = searchParams.week
     ? mondayOf(new Date(searchParams.week + "T00:00:00"))

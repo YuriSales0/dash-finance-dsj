@@ -105,7 +105,47 @@ export async function POST(request: Request) {
     // A taxa configurada no recebivel e MENSAL. Juros compostos por mes.
     const interestRatePct = Number(r.financing_interest_rate_pct || 0);
     const redemptionDays = Number(r.financing_redemption_days || 0);
+    // S6: validar config minima do recebivel — sem prazo + sem taxa nao
+    // gera retorno coerente. Bloqueia assinatura.
+    if (redemptionDays <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Recebivel sem prazo de resgate configurado (financing_redemption_days). Admin precisa setar antes de aceitar financiamentos.",
+        },
+        { status: 400 }
+      );
+    }
+    if (interestRatePct <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Recebivel sem taxa de juros configurada (financing_interest_rate_pct). Admin precisa setar antes de aceitar financiamentos.",
+        },
+        { status: 400 }
+      );
+    }
     const expectedReturn = calculateExpectedReturn(amount, interestRatePct, redemptionDays);
+
+    // L12: bloquear duplicate. Se o investidor ja tem financing ativo
+    // ou pendente nesse recebivel, rejeita — evita assinar 2x se o user
+    // refresh+reenviar o form.
+    const { data: existing } = await sb
+      .from("financings")
+      .select("id")
+      .eq("receivable_id", receivable_id)
+      .eq("investor_id", (investor as any).id)
+      .in("status", ["active", "pending"])
+      .limit(1);
+    if (existing && existing.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Voce ja tem um financiamento ativo nesse recebivel. Veja em /investor/portfolio.",
+        },
+        { status: 409 }
+      );
+    }
 
     const now = new Date();
     const redemptionDate = new Date(now);
