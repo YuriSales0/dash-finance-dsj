@@ -66,14 +66,24 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
   if (isAporteParcelado) {
     const intDays = intervalDaysFor(d.interest_payment_interval);
     const interestPerPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
+    // L7: separa amount_paid em (juros pago) + (balloon pago). Antes, o
+    // codigo computava `remaining = amount_total - amount_paid` direto, o
+    // que tratava juros pago como se fosse amortizacao do principal — bug
+    // que sub-estimava o balloon (e.g., pagar 30 em juros reduzia balloon
+    // em 30 indevidamente).
     if (intDays > 0 && interestPerPayment > 0) {
       const limitDays = Math.min(daysUntilDue, TERM_HORIZON_DAYS);
       const totalInstallments = Math.max(0, Math.floor(limitDays / intDays));
-      const { paidFull, partial } = partialCarryoverFor(interestPerPayment);
+      const interestTotalLifetime = interestPerPayment * totalInstallments;
+      // Aloca amount_paid: primeiro cobre juros, sobra vai pra balloon
+      const jurosPaid = Math.min(d.amount_paid, interestTotalLifetime);
+      const balloonPaid = Math.max(0, d.amount_paid - interestTotalLifetime);
+      const paidFull = Math.floor(jurosPaid / interestPerPayment);
+      const jurosPartial = jurosPaid - paidFull * interestPerPayment;
       for (let i = 1; i <= totalInstallments; i++) {
         if (i <= paidFull) continue;
         const isFirstUnpaid = i === paidFull + 1;
-        const partialOnThis = isFirstUnpaid ? partial : 0;
+        const partialOnThis = isFirstUnpaid ? jurosPartial : 0;
         const remainingOnThis = interestPerPayment - partialOnThis;
         const paymentDate = new Date(today.getTime() + i * intDays * 86400000);
         out.push({
@@ -89,24 +99,39 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
           is_next_unpaid: isFirstUnpaid,
         });
       }
-    }
-    const balloon = remaining + commission;
-    if (balloon > 0) {
-      // L1: balloon e a "proxima a pagar" se NAO ha mais juros parcelas
-      // pendentes (ou seja, todas as out atuais sao juros ja pagas — caso
-      // raro pra aporte com prazo curto, mas correto matematicamente).
-      // Se ainda ha juros parcelas em out (caso comum), elas sao a proxima.
-      const balloonIsNext = out.length === 0;
-      out.push({
-        ...baseFields,
-        amount: balloon,
-        payment_date: d.due_date,
-        days_from_today: daysUntilDue,
-        kind: "aporte_balloon",
-        per_occurrence_amount: balloon,
-        partial_paid_on_this: 0,
-        is_next_unpaid: balloonIsNext,
-      });
+      // Balloon: principal + comissao - balloon ja pago
+      const balloonTotal = d.amount_total + commission;
+      const balloonRemaining = balloonTotal - balloonPaid;
+      if (balloonRemaining > 0.005) {
+        const balloonIsNext = out.length === 0;
+        out.push({
+          ...baseFields,
+          amount: balloonRemaining,
+          payment_date: d.due_date,
+          days_from_today: daysUntilDue,
+          kind: "aporte_balloon",
+          per_occurrence_amount: balloonTotal,
+          partial_paid_on_this: balloonPaid,
+          is_next_unpaid: balloonIsNext,
+        });
+      }
+    } else {
+      // Fallback: aporte sem juros parcelado — balloon e o total
+      const balloonTotal = d.amount_total + commission;
+      const balloonPaid = Math.min(d.amount_paid, balloonTotal);
+      const balloonRemaining = balloonTotal - balloonPaid;
+      if (balloonRemaining > 0.005) {
+        out.push({
+          ...baseFields,
+          amount: balloonRemaining,
+          payment_date: d.due_date,
+          days_from_today: daysUntilDue,
+          kind: "aporte_balloon",
+          per_occurrence_amount: balloonTotal,
+          partial_paid_on_this: balloonPaid,
+          is_next_unpaid: true,
+        });
+      }
     }
   } else if (isEmprestimoParcelado) {
     const intDays = intervalDaysFor(d.interest_payment_interval);

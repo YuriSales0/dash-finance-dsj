@@ -324,7 +324,9 @@ export interface Receivable {
   financing_max_amount: number | null;
   financing_redemption_days: number | null;
   financing_terms: string | null;
-  financing_raised: number;
+  // S4: DECIMAL DEFAULT 0 sem NOT NULL — pode ser null em row recem-criada
+  // antes do trigger update_receivable_raised rodar. Tratamos como nullable.
+  financing_raised: number | null;
   source: "manual" | "transaction" | "shopify" | "gateway";
   source_ref: string | null;
   notes: string | null;
@@ -345,12 +347,14 @@ export interface Debt {
   issue_date: string;
   due_date: string;
   interest_rate_pct: number | null;
-  fixed_commission?: number;
-  iof_pct?: number;
-  is_recurring?: boolean;
-  recurrence_interval?: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null;
-  recurrence_end_date?: string | null;
-  interest_payment_interval?: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null;
+  // S3: campos com DEFAULT 0 no DB sao sempre retornados — usar null
+  // (nao optional `?`) reflete melhor a forma do row do Supabase.
+  fixed_commission: number | null;
+  iof_pct: number | null;
+  is_recurring: boolean | null;
+  recurrence_interval: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null;
+  recurrence_end_date: string | null;
+  interest_payment_interval: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null;
   status: DebtStatus;
   category: string | null;
   source: "manual" | "transaction" | "supplier";

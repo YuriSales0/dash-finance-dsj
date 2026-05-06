@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Save, Trash2, Loader2, AlertTriangle, ShieldOff } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 
 interface Investor {
   id: number;
@@ -39,6 +40,7 @@ export function InvestorEditModal({ investor, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function save() {
     setSaving(true);
@@ -54,6 +56,7 @@ export function InvestorEditModal({ investor, onClose }: Props) {
       setError(data.error || `Erro ${res.status}`);
       return;
     }
+    toast.success(`Investidor "${form.name}" atualizado.`);
     onClose();
     router.refresh();
   }
@@ -61,7 +64,7 @@ export function InvestorEditModal({ investor, onClose }: Props) {
   async function del() {
     if (
       !confirm(
-        `Excluir definitivamente o investidor "${investor.name}"? Essa acao remove o registro e o usuario auth. Nao pode ser desfeita.`
+        `Excluir definitivamente o investidor "${investor.name}"? Essa ação remove o registro e o usuário auth. Não pode ser desfeita.`
       )
     ) {
       return;
@@ -75,8 +78,10 @@ export function InvestorEditModal({ investor, onClose }: Props) {
     if (!res.ok) {
       const data = await res.json().catch(() => ({ error: "Erro" }));
       setError(data.error || `Erro ${res.status}`);
+      toast.error(data.error || "Erro ao excluir investidor");
       return;
     }
+    toast.success(`Investidor "${investor.name}" excluído.`);
     onClose();
     router.refresh();
   }

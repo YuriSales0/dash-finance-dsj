@@ -172,7 +172,7 @@ function InvestorsContent({
         <div className="divide-y divide-slate-100">
           {openReceivables.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-sm">
-              Nenhum recebivel aberto pra financiamento. Crie ou edite um recebivel em{" "}
+              Nenhum recebível aberto pra financiamento. Crie ou edite um recebivel em{" "}
               <a href="/admin/receivables" className="text-brand-600 underline">
                 /admin/receivables
               </a>{" "}

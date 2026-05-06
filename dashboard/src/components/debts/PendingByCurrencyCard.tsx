@@ -80,7 +80,7 @@ export function PendingByCurrencyCard({ debts, pendingByCurrency, next30ByCurren
             </div>
             <div className="overflow-y-auto p-4 space-y-2">
               {debtsForCurrency(openCurrency).length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-8">Nenhuma divida pendente</p>
+                <p className="text-sm text-slate-400 text-center py-8">Nenhuma dívida pendente</p>
               ) : (
                 debtsForCurrency(openCurrency).map(({ debt, remaining }) => {
                   const isOverdue = new Date(debt.due_date) < new Date();

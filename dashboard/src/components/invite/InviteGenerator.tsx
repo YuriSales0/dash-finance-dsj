@@ -143,7 +143,7 @@ export function InviteGenerator({
         <div className="card-body space-y-4">
           {receivables.length === 0 ? (
             <div className="text-sm text-slate-500">
-              Nenhum recebivel aberto para financiamento.{" "}
+              Nenhum recebível aberto para financiamento.{" "}
               <a href="/admin/receivables" className="text-brand-600 underline">Criar recebivel primeiro</a>.
             </div>
           ) : (

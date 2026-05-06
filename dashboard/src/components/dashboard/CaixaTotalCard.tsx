@@ -140,7 +140,7 @@ export function CaixaTotalCard({
           onClose={() => setOpenReceivablesCurrency(null)}
         >
           {receivablesForCurrency(openReceivablesCurrency).length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-8">Nenhum recebivel pendente</p>
+            <p className="text-sm text-slate-400 text-center py-8">Nenhum recebível pendente</p>
           ) : (
             receivablesForCurrency(openReceivablesCurrency).map(({ r, remaining }) => {
               const isOverdue = new Date(r.due_date) < new Date();
@@ -197,7 +197,7 @@ export function CaixaTotalCard({
           onClose={() => setOpenDebtsCurrency(null)}
         >
           {occurrencesForCurrency(openDebtsCurrency).length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-8">Nenhuma divida imediata</p>
+            <p className="text-sm text-slate-400 text-center py-8">Nenhuma dívida imediata</p>
           ) : (
             occurrencesForCurrency(openDebtsCurrency).map((o, idx) => {
               const isOverdue = o.days_from_today < 0;

@@ -44,8 +44,16 @@ export function BalanceCheck({ rows }: BalanceCheckProps) {
 
       <div className="card-body space-y-3">
         <p className="text-xs text-slate-500">
-          Compara a soma das transacoes (Lucro acumulado) com a variacao real do saldo bancario
-          (saldo atual - saldo de abertura). Se diff = 0, P&amp;L = fluxo de saldo na conta.
+          <strong>Variacao real</strong> = saldo atual - saldo de abertura (somado das contas
+          ativas).{" "}
+          <strong>Lucro calculado</strong> = soma de amount_original de TODAS as transacoes da
+          moeda. <strong>Diferenca</strong> = Variacao real − Lucro calculado.
+        </p>
+        <p className="text-xs text-slate-500">
+          Se diff = 0, todo movimento bancario veio (e foi pra) uma transacao registrada — sem
+          edicoes manuais de saldo, sem CSVs faltando, sem opening_balance fora do dia 1.
+          Diff &gt; 0 → balance_current foi inflado manualmente OU faltam transacoes de saida.
+          Diff &lt; 0 → balance_current foi reduzido manualmente OU faltam transacoes de entrada.
         </p>
 
         <div className="overflow-x-auto">

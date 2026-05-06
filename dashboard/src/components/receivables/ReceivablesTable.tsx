@@ -144,7 +144,7 @@ export function ReceivablesTable({ receivables }: Props) {
           </thead>
           <tbody>
             {receivables.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-slate-400">Nenhum recebivel</td></tr>
+              <tr><td colSpan={8} className="text-center py-8 text-slate-400">Nenhum recebível</td></tr>
             ) : receivables.map((r) => {
               const remaining = r.amount_total - r.amount_received;
               const isTest = isTestReceivable(r);

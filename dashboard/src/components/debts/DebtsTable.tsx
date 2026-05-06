@@ -45,7 +45,7 @@ export function DebtsTable({ debts, entities }: { debts: Debt[]; entities: Entit
           </thead>
           <tbody>
             {debts.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-8 text-slate-400">Nenhuma divida</td></tr>
+              <tr><td colSpan={7} className="text-center py-8 text-slate-400">Nenhuma dívida</td></tr>
             ) : debts.map((d) => {
               const isOverdue = d.status !== "paid" && new Date(d.due_date) < new Date();
               return (
