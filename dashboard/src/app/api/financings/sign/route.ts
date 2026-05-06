@@ -154,6 +154,15 @@ export async function POST(request: Request) {
     // C3: sanity check pos-insert. O trigger update_receivable_raised
     // recalcula financing_raised somando todos os ativos. Se overshooting
     // (race condition: outro investidor inseriu em paralelo), DELETE este.
+    //
+    // L3 (auditoria geral): este nao e um lock real. Em cenario com 2+
+    // investidores concorrendo pelo mesmo recebivel ao mesmo tempo, ambos
+    // podem detectar overshoot e ambos deletar — o que rejeitaria as duas
+    // tentativas mesmo que uma fosse valida. Para correcao definitiva,
+    // criar uma RPC Postgres com SELECT ... FOR UPDATE no receivable +
+    // INSERT atomico. Por enquanto, com volume baixo de assinaturas
+    // simultaneas, esta abordagem e aceitavel — o "pior caso" e um
+    // investidor receber 409 e tentar novamente.
     const { data: rAfter } = await sb
       .from("receivables")
       .select("amount_total, financing_raised")

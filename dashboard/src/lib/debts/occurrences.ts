@@ -2,6 +2,12 @@ import type { Debt } from "@/types/database";
 import type { DebtOccurrence } from "@/components/debts/TermCardWithDetails";
 
 export const TERM_HORIZON_DAYS = 365;
+// L2: cap de quanto pra tras geramos ocorrencias atrasadas. Sem esse cap,
+// uma divida emitida ha 3 anos com recorrencia mensal geraria 36 entries
+// no calendar/buckets, poluindo a UI. Atrasados alem desse limite ainda
+// existem no DB, mas sao "muito antigos" e o admin deve resolver
+// manualmente (marcar paid ou defaulted).
+export const OVERDUE_LOOKBACK_DAYS = 60;
 
 export function intervalDaysFor(interval: string | null | undefined): number {
   return interval === "weekly" ? 7 :
@@ -86,6 +92,11 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
     }
     const balloon = remaining + commission;
     if (balloon > 0) {
+      // L1: balloon e a "proxima a pagar" se NAO ha mais juros parcelas
+      // pendentes (ou seja, todas as out atuais sao juros ja pagas — caso
+      // raro pra aporte com prazo curto, mas correto matematicamente).
+      // Se ainda ha juros parcelas em out (caso comum), elas sao a proxima.
+      const balloonIsNext = out.length === 0;
       out.push({
         ...baseFields,
         amount: balloon,
@@ -94,7 +105,7 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
         kind: "aporte_balloon",
         per_occurrence_amount: balloon,
         partial_paid_on_this: 0,
-        is_next_unpaid: false,
+        is_next_unpaid: balloonIsNext,
       });
     }
   } else if (isEmprestimoParcelado) {
@@ -112,6 +123,8 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
           const remainingOnThis = perInstallment - partialOnThis;
           const paymentDate = new Date(issueDate.getTime() + i * intDays * 86400000);
           const daysFromToday = (paymentDate.getTime() - today.getTime()) / 86400000;
+          // L2: pula parcelas muito antigas (poluem a UI)
+          if (daysFromToday < -OVERDUE_LOOKBACK_DAYS) continue;
           out.push({
             ...baseFields,
             amount: remainingOnThis,
@@ -150,6 +163,15 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
       let occDate = new Date(dueDate);
       let occIndex = 0;
       let firstUnpaidAdded = false;
+      // L2: avanca occDate ate >= (today - OVERDUE_LOOKBACK_DAYS) pra evitar
+      // gerar centenas de ocorrencias de divida muito antiga (recorrente
+      // emitida ha anos). Mantem occIndex correto pra paidFull continuar
+      // se referenciar a contagem original desde issue_date.
+      const overdueLimitMs = today.getTime() - OVERDUE_LOOKBACK_DAYS * 86400000;
+      while (occDate.getTime() < overdueLimitMs && occDate < lastDate) {
+        occIndex++;
+        occDate = new Date(occDate.getTime() + intDays * 86400000);
+      }
       while (occDate <= lastDate) {
         occIndex++;
         if (occIndex > paidFull) {

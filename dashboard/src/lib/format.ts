@@ -2,7 +2,10 @@ export function formatCurrency(
   value: number,
   currency: string = "USD"
 ): string {
-  return new Intl.NumberFormat("en-US", {
+  // U2: locale pt-BR pra usar separador decimal/milhar brasileiro
+  // (1.234,56 ao inves de 1,234.56). Symbol mantem nativo da moeda
+  // (US$, £, €, R$). Para USD em pt-BR sai "US$ 1.234,56".
+  return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,

@@ -332,7 +332,7 @@ export interface Receivable {
   created_at: string;
 }
 
-export type DebtStatus = "pending" | "partial" | "paid" | "overdue";
+export type DebtStatus = "pending" | "partial" | "paid" | "overdue" | "defaulted";
 
 export interface Debt {
   id: number;
