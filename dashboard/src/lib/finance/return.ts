@@ -19,6 +19,9 @@ export function calculateExpectedReturn(
 ): number {
   const months = monthsFromDays(redemptionDays);
   if (!(principal > 0)) return 0;
+  // L8: dias=0 → retorna principal sem juros (prazo instantaneo).
+  // Quem chamar deve validar se isso faz sentido pro negocio
+  // (sign route ja bloqueia redemptionDays<=0 em S6).
   if (months === 0) return principal;
   if (!Number.isFinite(monthlyRatePct) || monthlyRatePct <= 0) return principal;
   const total = principal * Math.pow(1 + monthlyRatePct / 100, months);
