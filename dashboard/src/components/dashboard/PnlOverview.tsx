@@ -233,12 +233,17 @@ export function PnlOverview({ pnl, cashflow = [], cashflowByCurrency = [] }: Pnl
         </div>
       </div>
 
-      {/* Aviso multi-moeda */}
+      {/* Aviso multi-moeda + disclaimer cash basis */}
       <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-900">
-        <strong>P&amp;L acompanha o saldo:</strong> Receita = tudo que entrou,
+        <strong>P&amp;L em regime de caixa:</strong> Receita = tudo que entrou,
         Despesa = tudo que saiu (incluindo FX/interbank, intercompany e
-        investidores). Lucro = Receita - Despesa = variacao real do saldo no
-        periodo. Cada moeda e mostrada separadamente (sem conversao automatica).
+        investidores). Lucro = Receita − Despesa = variação real do saldo no
+        período. Cada moeda é mostrada separadamente (sem conversão automática).
+        <span className="block mt-1 text-[10px] text-blue-700">
+          Este P&amp;L usa <strong>regime de caixa</strong> (cash basis) — reflete quando
+          o dinheiro entrou/saiu da conta, não quando foi faturado. Difere de P&amp;L
+          por competência (accrual) usado em contabilidade formal.
+        </span>
       </div>
 
       {/* P&L por moeda */}

@@ -202,12 +202,25 @@ export async function DELETE(request: Request) {
             }
           }
 
-          // 3) Deletar a transaction (precisa ser antes do deleteDebt se houver FK)
+          // 3) Deletar a transaction ANTES do deleteDebt pra evitar orfao.
+          // Se deleteDebt falhar depois, a transaction ja foi deletada mas
+          // o balance ja foi revertido (step 2). Pior caso: debt existe sem
+          // transaction = admin recria manualmente. Melhor que o inverso
+          // (debt deletada mas transaction orfã inflando saldo).
           await sb.from("transactions").delete().eq("id", t.id);
           reversedTx = true;
         }
       } catch (e: any) {
         console.error("Erro ao reverter aporte:", e.message);
+        // L13: se reverter tx falhar, NAO segue com deleteDebt —
+        // retorna erro pra admin investigar. Antes seguia e
+        // deletava o debt sem reverter, ficando saldo inflado.
+        if (!reversedTx) {
+          return NextResponse.json(
+            { error: `Falha ao reverter transacao do aporte: ${e.message}` },
+            { status: 500 }
+          );
+        }
       }
     }
 

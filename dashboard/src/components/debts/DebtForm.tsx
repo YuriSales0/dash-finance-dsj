@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Loader2, AlertTriangle, Trash2 } from "lucide-react";
 import type { Debt } from "@/types/database";
@@ -41,6 +41,14 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  // U13: scroll automático pro erro quando aparece
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [error]);
 
   const defaultEntity = entities[0]?.id || "";
   const defaultCurrency = entities[0]?.currency_default || "USD";
@@ -454,7 +462,10 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
         </Field>
 
         {error && (
-          <div className="md:col-span-2 bg-red-50 text-red-700 rounded p-2 text-xs flex items-start gap-2">
+          <div
+            ref={errorRef}
+            className="md:col-span-2 bg-red-50 text-red-700 rounded p-2 text-xs flex items-start gap-2"
+          >
             <AlertTriangle size={12} className="mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
