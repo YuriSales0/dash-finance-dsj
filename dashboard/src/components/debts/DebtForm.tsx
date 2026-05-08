@@ -84,13 +84,9 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
   const commission = Number(form.fixed_commission) || 0;
   const iofPct = Number(form.iof_pct) || 0;
   const iofAmount = principal * iofPct / 100;
-  const totalReturn = isAporte && principal > 0
-    ? principal * (1 + ratePct / 100) + commission + iofAmount
-    : null;
   const recurringTotal = form.is_recurring && principal > 0
     ? principal + commission
     : null;
-  // Numero de parcelas entre issue_date e due_date
   function calcInstallmentCount(): number {
     if (!supportsInstallments || !form.pays_in_installments) return 0;
     if (!form.issue_date || !form.due_date) return 0;
@@ -107,10 +103,14 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
     return Math.floor(days / intervalDays);
   }
   const installmentCount = calcInstallmentCount();
-  // Aporte: juros parcelado (interest-only) + balloon principal no fim
-  const installmentInterest = isAporte && form.pays_in_installments && principal > 0
-    ? principal * ratePct / 100
+  const installmentPayment = isAporte && form.pays_in_installments && principal > 0
+    ? principal * ratePct / 100 + commission
     : 0;
+  const totalReturn = isAporte && principal > 0
+    ? (form.pays_in_installments && installmentCount > 0
+        ? principal + installmentPayment * installmentCount + iofAmount
+        : principal * (1 + ratePct / 100) + commission + iofAmount)
+    : null;
   // Emprestimo: parcelas iguais = amount_total / N
   const installmentEqualPayment = isEmprestimo && form.pays_in_installments && principal > 0 && installmentCount > 0
     ? principal / installmentCount
@@ -314,7 +314,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
           <input type="number" step="0.01" className="input" value={form.interest_rate_pct} onChange={(e) => update("interest_rate_pct", e.target.value)} />
         </Field>
         {showCommission && (
-          <Field label={isAporte ? "Comissao fixa" : "Comissao / bonus fixo"}>
+          <Field label={isAporte ? (form.pays_in_installments ? "Comissão fixa (por parcela)" : "Comissão fixa") : "Comissão / bonus fixo"}>
             <input type="number" step="0.01" className="input" value={form.fixed_commission} onChange={(e) => update("fixed_commission", e.target.value)} placeholder={isAporte ? "Ex: 500" : "Ex: comissao mensal fixa"} />
           </Field>
         )}
@@ -333,7 +333,7 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
                 className="rounded"
               />
               {isAporte
-                ? "Pagar juros em parcelas mensais ate o vencimento (principal + comissao no fim)"
+                ? `Pagar juros${commission > 0 ? " + comissão" : ""} em parcelas periódicas até o vencimento (principal no fim)`
                 : "Pagar em parcelas iguais entre emissao e vencimento"}
             </label>
           </div>
@@ -361,20 +361,20 @@ export function DebtForm({ entities, editDebt = null, onClose, forceOpen = false
               {Number(form.fixed_commission) > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(Number(form.fixed_commission))} comissao</>}
               {iofAmount > 0 && <> + {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(iofAmount)} IOF ({form.iof_pct}%)</>}
             </p>
-            {form.pays_in_installments && installmentInterest > 0 && installmentCount > 0 && (
+            {form.pays_in_installments && installmentPayment > 0 && installmentCount > 0 && (
               <div className="border-t border-blue-200 pt-2 text-xs text-blue-800 space-y-1">
                 <p className="font-semibold">Plano de pagamento:</p>
                 <p>
                   · {installmentCount} parcela(s) de{" "}
-                  <strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(installmentInterest)}</strong>{" "}
-                  por {intervalLabel} (juros)
+                  <strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(installmentPayment)}</strong>{" "}
+                  por {intervalLabel} ({commission > 0 && ratePct > 0 ? "juros + comissão" : commission > 0 ? "comissão" : "juros"})
                 </p>
                 <p>
                   · No vencimento ({form.due_date || "—"}):{" "}
                   <strong>
-                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(principal + commission)}
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: form.currency }).format(principal)}
                   </strong>{" "}
-                  (principal{commission > 0 ? " + comissao" : ""})
+                  (principal)
                 </p>
               </div>
             )}

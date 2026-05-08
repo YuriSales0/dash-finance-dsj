@@ -66,25 +66,21 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
   if (isAporteParcelado) {
     const intDays = intervalDaysFor(d.interest_payment_interval);
     const interestPerPayment = d.amount_total * (d.interest_rate_pct || 0) / 100;
-    // L7: separa amount_paid em (juros pago) + (balloon pago). Antes, o
-    // codigo computava `remaining = amount_total - amount_paid` direto, o
-    // que tratava juros pago como se fosse amortizacao do principal — bug
-    // que sub-estimava o balloon (e.g., pagar 30 em juros reduzia balloon
-    // em 30 indevidamente).
-    if (intDays > 0 && interestPerPayment > 0) {
+    // Comissão mensal: quando parcelado, entra em cada parcela (não no balloon)
+    const perPayment = interestPerPayment + commission;
+    if (intDays > 0 && perPayment > 0) {
       const limitDays = Math.min(daysUntilDue, TERM_HORIZON_DAYS);
       const totalInstallments = Math.max(0, Math.floor(limitDays / intDays));
-      const interestTotalLifetime = interestPerPayment * totalInstallments;
-      // Aloca amount_paid: primeiro cobre juros, sobra vai pra balloon
-      const jurosPaid = Math.min(d.amount_paid, interestTotalLifetime);
-      const balloonPaid = Math.max(0, d.amount_paid - interestTotalLifetime);
-      const paidFull = Math.floor(jurosPaid / interestPerPayment);
-      const jurosPartial = jurosPaid - paidFull * interestPerPayment;
+      const parcelasTotalLifetime = perPayment * totalInstallments;
+      const parcelasPaid = Math.min(d.amount_paid, parcelasTotalLifetime);
+      const balloonPaid = Math.max(0, d.amount_paid - parcelasTotalLifetime);
+      const paidFull = Math.floor(parcelasPaid / perPayment);
+      const parcelaPartial = parcelasPaid - paidFull * perPayment;
       for (let i = 1; i <= totalInstallments; i++) {
         if (i <= paidFull) continue;
         const isFirstUnpaid = i === paidFull + 1;
-        const partialOnThis = isFirstUnpaid ? jurosPartial : 0;
-        const remainingOnThis = interestPerPayment - partialOnThis;
+        const partialOnThis = isFirstUnpaid ? parcelaPartial : 0;
+        const remainingOnThis = perPayment - partialOnThis;
         const paymentDate = new Date(today.getTime() + i * intDays * 86400000);
         out.push({
           ...baseFields,
@@ -94,13 +90,13 @@ export function generateOccurrences(d: Debt, today: Date): DebtOccurrence[] {
           kind: "aporte_juros",
           occurrence_index: i,
           total_occurrences: totalInstallments,
-          per_occurrence_amount: interestPerPayment,
+          per_occurrence_amount: perPayment,
           partial_paid_on_this: partialOnThis,
           is_next_unpaid: isFirstUnpaid,
         });
       }
-      // Balloon: principal + comissao - balloon ja pago
-      const balloonTotal = d.amount_total + commission;
+      // Balloon: apenas principal (comissão já paga nas parcelas)
+      const balloonTotal = d.amount_total;
       const balloonRemaining = balloonTotal - balloonPaid;
       if (balloonRemaining > 0.005) {
         const balloonIsNext = out.length === 0;
